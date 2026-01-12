@@ -1,0 +1,110 @@
+:root{
+  --brand: #0B415F;        /* Medi Suite blue */
+  --brand-2:#08364e;       /* darker blue */
+  --accent:#7EBE4A;        /* Medi Suite green */
+  --ink:#0f172a;
+  --muted:#5C7B8C;
+  --card:#ffffff;
+  --bg:#ffffff;
+
+  --soft: rgba(11,65,95,.06);
+  --ring: rgba(126,190,74,.35);
+}
+
+body{
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.btn-brand{
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+.btn-brand:hover{
+  background: var(--brand-2);
+  border-color: var(--brand-2);
+  color:#fff;
+}
+
+.badge-soft{
+  background: rgba(126,190,74,.15);
+  color: var(--brand);
+  border: 1px solid rgba(126,190,74,.35);
+}
+
+.card-soft{
+  border: 1px solid rgba(15,23,42,.08);
+  box-shadow: 0 10px 30px rgba(15,23,42,.06);
+  border-radius: 16px;
+}
+
+.navbar-blur{
+  background: rgba(255,255,255,.85);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(15,23,42,.06);
+}
+
+.search-pill{
+  border-radius: 999px;
+  border: 1px solid rgba(15,23,42,.12);
+  box-shadow: 0 10px 20px rgba(15,23,42,.06);
+}
+.search-pill:focus-within{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 .25rem var(--ring);
+}
+
+.hero-grad{
+  background:
+    radial-gradient(1200px 600px at 10% 10%, rgba(11,65,95,.18), transparent 60%),
+    radial-gradient(900px 500px at 90% 20%, rgba(126,190,74,.18), transparent 55%),
+    linear-gradient(180deg, #fff 0%, #fff 55%, var(--soft) 100%);
+}
+
+.section-title{
+  letter-spacing: .2px;
+}
+
+.h-scroll{
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x mandatory;
+}
+.h-scroll::-webkit-scrollbar{ height: 8px; }
+.h-scroll::-webkit-scrollbar-thumb{
+  background: rgba(15,23,42,.12);
+  border-radius: 999px;
+}
+
+.snap-card{
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+}
+
+.pill{
+  border: 1px solid rgba(15,23,42,.10);
+  background: #fff;
+  border-radius: 999px;
+  padding: 10px 14px;
+}
+.pill:hover{
+  border-color: rgba(126,190,74,.45);
+  box-shadow: 0 10px 20px rgba(15,23,42,.06);
+}
+
+.soft-block{
+  background: var(--soft);
+  border-top: 1px solid rgba(15,23,42,.06);
+  border-bottom: 1px solid rgba(15,23,42,.06);
+}
+
+.img-ph{
+  background: linear-gradient(
+    135deg,
+    rgba(11,65,95,.20),
+    rgba(126,190,74,.20)
+  );
+}
