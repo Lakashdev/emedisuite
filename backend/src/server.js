@@ -1,6 +1,7 @@
+import "./env.js";
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
+/* import dotenv from "dotenv"; */
 import { prisma } from "./config/prisma.js";
 import { testRoutes } from "./routes/test.routes.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -21,11 +22,11 @@ import { adminRoutes } from "./routes/admin.routes.js";
 
 
 
-dotenv.config({ path: ".env" });
+/* dotenv.config({ path: ".env" }); */
 
 const app = express();
 
-const FRONTEND_URL = "http://localhost:5173";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 app.use(
   cors({
