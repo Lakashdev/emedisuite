@@ -1,15 +1,23 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
-/**
- * Temporary admin guard.
- * Later we’ll wire real auth + role check.
- */
 export default function AdminRoute() {
-  const user = null; // TODO: replace with auth state
+  const { token: ctxToken, user: ctxUser } = useAuth();
+  const location = useLocation();
 
-  // Not logged in or not admin → redirect
-  if (!user || user.role !== "admin") {
-    return <Navigate to="/login" replace />;
+  // Fallback to localStorage (handles refresh / initial render timing)
+  const token = ctxToken || localStorage.getItem("token");
+  const userRaw = ctxUser || (() => {
+    const raw = localStorage.getItem("user");
+    return raw ? JSON.parse(raw) : null;
+  })();
+
+  if (!token) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (userRaw?.role !== "admin") {
+    return <Navigate to="/" replace />;
   }
 
   return <Outlet />;

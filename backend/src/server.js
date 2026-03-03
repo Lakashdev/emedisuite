@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { prisma } from "./config/prisma.js";
 import { testRoutes } from "./routes/test.routes.js";
-import { authRoutes } from "./routes/auth.routes.js";
+import authRoutes from "./routes/auth.routes.js";
 import { meRoutes } from "./routes/me.routes.js";
 import { brandRoutes } from "./routes/brand.routes.js";
 import { categoryRoutes } from "./routes/category.routes.js";
@@ -12,7 +12,9 @@ import { cartRoutes } from "./routes/cart.routes.js";
 import { orderRoutes } from "./routes/order.routes.js";
 import { checkoutSessionRoutes } from "./routes/checkoutSession.routes.js";
 import { orderActionsRoutes } from "./routes/orderActions.routes.js";
-import passwordResetRoutes from "./routes/passwordReset.routes.js";
+import profileRoutes from "./routes/profile.routes.js";
+import { adminRoutes } from "./routes/admin.routes.js";
+
 
 
 
@@ -23,7 +25,24 @@ dotenv.config({ path: ".env" });
 
 const app = express();
 
-app.use(cors());
+const FRONTEND_URL = "http://localhost:5173";
+
+app.use(
+  cors({
+    origin: FRONTEND_URL,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: false, // ✅ set false unless you are using cookies
+  })
+);
+/* app.options("*", cors({ origin: FRONTEND_URL })); */
+
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(express.json());
 
 app.get("/health", (req, res) => {
@@ -62,7 +81,9 @@ app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/checkout-sessions", checkoutSessionRoutes);
 app.use("/api", orderActionsRoutes);
-app.use("/api", passwordResetRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/admin", adminRoutes);
+
 
 
 start();

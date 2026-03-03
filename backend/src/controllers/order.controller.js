@@ -203,14 +203,25 @@ export const listMyOrders = async (req, res) => {
 
   const items = await prisma.order.findMany({
     where: { userId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      items: true,
+    orderBy: { placedAt: "desc" }, // better than createdAt for orders
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      total: true,
+      subtotal: true,
+      discountTotal: true,
+      deliveryFee: true,
+      placedAt: true,
+      deliveredAt: true,
+      cancelledAt: true,
+      items: { select: { id: true } }, // just count-able
     },
   });
 
   res.json({ items });
 };
+
 
 export const getOrderById = async (req, res) => {
   const userId = req.user.id;

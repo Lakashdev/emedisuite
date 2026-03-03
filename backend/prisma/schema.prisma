@@ -17,13 +17,18 @@ model User {
 
   passwordHash String
 
-  // added for Cart relation (opposite side)
+  emailVerified       Boolean   @default(false)
+  emailOtpHash        String?
+  emailOtpExpiresAt   DateTime?
+  emailOtpAttempts    Int       @default(0)
+  emailOtpLastSentAt  DateTime?
+
   cart Cart?
 
   orders           Order[]
   checkoutSessions CheckoutSession[]
   returnRequests   ReturnRequest[]
-  passwordResets PasswordReset[]
+  passwordResets   PasswordReset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

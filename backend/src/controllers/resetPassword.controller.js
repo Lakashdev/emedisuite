@@ -31,7 +31,7 @@ export async function resetPassword(req, res) {
     prisma.user.update({
       where: { id: userId },
       data: { passwordHash },
-    }),
+    })
     prisma.passwordReset.update({
       where: { id: prId },
       data: { usedAt: new Date() },

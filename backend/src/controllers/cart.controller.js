@@ -221,3 +221,56 @@ export const mergeGuestCart = async (req, res) => {
 
   res.json({ cart: updatedCart, warnings });
 };
+
+
+
+export const reorderFromOrder = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params; // order id
+
+    const order = await prisma.order.findFirst({
+      where: { id, userId },
+      select: {
+        id: true,
+        items: { select: { productId: true, variantId: true, quantity: true } },
+      },
+    });
+
+    if (!order) return res.status(404).json({ message: "order not found" });
+    if (!order.items.length) return res.status(400).json({ message: "no items to reorder" });
+
+    // ensure cart exists
+    const cart = await prisma.cart.upsert({
+      where: { userId },
+      update: {},
+      create: { userId },
+      select: { id: true },
+    });
+
+    // add items to cart (merge quantities)
+    for (const it of order.items) {
+      await prisma.cartItem.upsert({
+        where: {
+          cartId_productId_variantId: {
+            cartId: cart.id,
+            productId: it.productId,
+            variantId: it.variantId ?? null,
+          },
+        },
+        update: { quantity: { increment: it.quantity } },
+        create: {
+          cartId: cart.id,
+          productId: it.productId,
+          variantId: it.variantId ?? null,
+          quantity: it.quantity,
+        },
+      });
+    }
+
+    return res.json({ message: "Items added to cart" });
+  } catch (err) {
+    console.error("reorderFromOrder error:", err);
+    return res.status(500).json({ message: "internal server error" });
+  }
+};

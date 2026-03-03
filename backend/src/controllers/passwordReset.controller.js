@@ -1,94 +1,108 @@
-import crypto from "crypto";
-import jwt from "jsonwebtoken";
+// backend/src/controllers/passwordReset.controller.js
+import bcrypt from "bcrypt";
 import { prisma } from "../config/prisma.js";
-import { sendResetCodeEmail } from "../services/email.service.js";
-
-function sha256(input) {
-  return crypto.createHash("sha256").update(input).digest("hex");
-}
-
-function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
-}
-
-function makeCode() {
-  // 6 digits
-  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
-}
+import { transporter } from "../utils/mailer.js";
+import { generate6DigitCode, hashCode } from "../utils/resetCode.js";
 
 export async function forgotPassword(req, res) {
-  const email = normalizeEmail(req.body.email);
-  if (!email) return res.status(400).json({ message: "email is required" });
+  try {
+    const { emailOrPhone } = req.body;
+    const input = String(emailOrPhone || "").trim().toLowerCase();
 
-  const user = await prisma.user.findFirst({ where: { email } });
+    if (!input) return res.status(400).json({ message: "Email or phone required" });
 
-  // Always respond success (avoid user enumeration)
-  const okResponse = { message: "If the account exists, a verification code has been sent." };
+    const user = await prisma.user.findFirst({
+      where: { OR: [{ email: input }, { phone: input }] },
+      select: { id: true, email: true, phone: true, name: true },
+    });
 
-  if (!user) return res.json(okResponse);
+    if (!user) return res.json({ message: "If the account exists, a reset code has been sent." });
 
-  // optional: delete old unused codes
-  await prisma.passwordReset.deleteMany({
-    where: { userId: user.id, usedAt: null },
-  });
+    await prisma.passwordReset.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
 
-  const ttlMin = Number(process.env.RESET_CODE_TTL_MINUTES || 10);
-  const expiresAt = new Date(Date.now() + ttlMin * 60 * 1000);
+    const code = generate6DigitCode();
+    const expiresMin = Number(process.env.RESET_CODE_EXPIRES_MIN || 15);
 
-  const code = makeCode();
-  const pepper = process.env.RESET_CODE_PEPPER || "";
-  const codeHash = sha256(`${code}:${pepper}`);
+    await prisma.passwordReset.create({
+      data: {
+        userId: user.id,
+        codeHash: hashCode(code),
+        expiresAt: new Date(Date.now() + expiresMin * 60 * 1000),
+      },
+    });
 
-  await prisma.passwordReset.create({
-    data: {
-      userId: user.id,
-      codeHash,
-      expiresAt,
-    },
-  });
+    if (user.email) {
+      await transporter.sendMail({
+        from: `"Pharmacy App" <no-reply@pharmacy.local>`,
+        to: user.email,
+        subject: "Your password reset code",
+        html: `
+          <p>Hi ${user.name || "there"},</p>
+          <p>Your password reset code is:</p>
+          <h2 style="letter-spacing:2px">${code}</h2>
+          <p>This code expires in ${expiresMin} minutes.</p>
+        `,
+      });
+    }
 
-  await sendResetCodeEmail({ to: email, code });
-
-  return res.json(okResponse);
+    return res.json({ message: "If the account exists, a reset code has been sent." });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
 }
 
-export async function verifyResetCode(req, res) {
-  const email = normalizeEmail(req.body.email);
-  const code = String(req.body.code || "").trim();
+export async function resetPassword(req, res) {
+  try {
+    const { emailOrPhone, code, newPassword } = req.body;
 
-  if (!email || !code) return res.status(400).json({ message: "email and code are required" });
+    const input = String(emailOrPhone || "").trim().toLowerCase();
+    const rawCode = String(code || "").trim();
+    const pwd = String(newPassword || "");
 
-  const user = await prisma.user.findFirst({ where: { email } });
-  if (!user) return res.status(400).json({ message: "Invalid code" });
+    if (!input || !rawCode || !pwd) return res.status(400).json({ message: "Missing fields" });
+    if (pwd.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
 
-  const latest = await prisma.passwordReset.findFirst({
-    where: { userId: user.id, usedAt: null },
-    orderBy: { createdAt: "desc" },
-  });
-
-  if (!latest) return res.status(400).json({ message: "Invalid code" });
-  if (latest.expiresAt < new Date()) return res.status(400).json({ message: "Code expired" });
-
-  // basic attempt limiting
-  if (latest.attempts >= 5) return res.status(429).json({ message: "Too many attempts. Request a new code." });
-
-  const pepper = process.env.RESET_CODE_PEPPER || "";
-  const inputHash = sha256(`${code}:${pepper}`);
-
-  if (inputHash !== latest.codeHash) {
-    await prisma.passwordReset.update({
-      where: { id: latest.id },
-      data: { attempts: { increment: 1 } },
+    const user = await prisma.user.findFirst({
+      where: { OR: [{ email: input }, { phone: input }] },
+      select: { id: true },
     });
-    return res.status(400).json({ message: "Invalid code" });
+    if (!user) return res.status(400).json({ message: "Invalid code or expired" });
+
+    const reset = await prisma.passwordReset.findFirst({
+      where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!reset) return res.status(400).json({ message: "Invalid code or expired" });
+
+    const maxAttempts = Number(process.env.RESET_MAX_ATTEMPTS || 5);
+    if (reset.attempts >= maxAttempts) {
+      await prisma.passwordReset.update({ where: { id: reset.id }, data: { usedAt: new Date() } });
+      return res.status(400).json({ message: "Too many attempts. Request a new code." });
+    }
+
+    const ok = hashCode(rawCode) === reset.codeHash;
+    if (!ok) {
+      await prisma.passwordReset.update({
+        where: { id: reset.id },
+        data: { attempts: { increment: 1 } },
+      });
+      return res.status(400).json({ message: "Invalid code or expired" });
+    }
+
+    const passwordHash = await bcrypt.hash(pwd, 10);
+
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      prisma.passwordReset.update({ where: { id: reset.id }, data: { usedAt: new Date() } }),
+    ]);
+
+    return res.json({ message: "Password reset successful. Please login." });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
   }
-
-  // create short-lived reset token
-  const resetToken = jwt.sign(
-    { sub: user.id, pr: latest.id, type: "password_reset" },
-    process.env.RESET_TOKEN_SECRET,
-    { expiresIn: "15m" }
-  );
-
-  return res.json({ resetToken });
 }

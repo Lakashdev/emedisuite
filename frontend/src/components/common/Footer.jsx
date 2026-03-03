@@ -109,7 +109,7 @@ export default function Footer() {
 
         <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
           <div className="small text-secondary">
-            © {year} CarePharm. All rights reserved.
+            © {year} Medisuite. All rights reserved.
           </div>
 
           <div className="d-flex flex-wrap gap-3">

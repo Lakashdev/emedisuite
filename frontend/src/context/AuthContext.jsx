@@ -1,49 +1,136 @@
-import { createContext, useContext, useMemo, useState } from "react";
-import { getUser, clearAuth, setUser as persistUser } from "../utils/authStorage";
-import * as auth from "../services/authService";
+import { createContext, useContext, useMemo, useState, useEffect } from "react";
 
 const AuthContext = createContext(null);
 
+// ✅ helper: decode JWT payload (to check expiry)
+const parseJwt = (token) => {
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+};
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => getUser());
+  const [token, setToken] = useState(() => localStorage.getItem("token") || "");
+  const [user, setUser] = useState(() => {
+    const raw = localStorage.getItem("user");
+    return raw ? JSON.parse(raw) : null;
+  });
+
+  const isAuthenticated = !!token && !!user;
+
+  const logout = () => {
+    setToken("");
+    setUser(null);
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+  };
+
+  // ✅ 1) Auto logout on first load if token already expired
+  useEffect(() => {
+  if (!token) return;
+
+  const payload = parseJwt(token);
+  if (!payload?.exp) return;
+
+  const expired = payload.exp * 1000 <= Date.now();
+  if (expired) logout();
+}, [token]);
+
+  // ✅ 2) Wrapper fetch: if backend returns 401 -> logout immediately
+  const authFetch = async (url, options = {}) => {
+    const res = await fetch(url, options);
+
+    if (res.status === 401) {
+      // session invalid/expired
+      logout();
+      throw new Error("Session expired. Please login again.");
+    }
+
+    return res;
+  };
+
+  const register = async ({ name, email, phone, password }) => {
+    const res = await fetch("http://localhost:5000/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, phone, password }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Registration failed");
+
+    const accessToken = data.accessToken || data.token;
+    const u = data.user;
+
+    if (!accessToken || !u) throw new Error("Registration failed");
+
+    setToken(accessToken);
+    setUser(u);
+
+    localStorage.setItem("token", accessToken);
+    localStorage.setItem("user", JSON.stringify(u));
+
+    return { token: accessToken, user: u };
+  };
+
+  const login = async ({ identifier, password }) => {
+    const res = await fetch("http://localhost:5000/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier, password }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Login failed");
+
+    const accessToken = data.accessToken || data.token;
+    const u = data.user;
+
+    if (!accessToken || !u) throw new Error("Login failed");
+
+    setToken(accessToken);
+    setUser(u);
+
+    localStorage.setItem("token", accessToken);
+    localStorage.setItem("user", JSON.stringify(u));
+
+    return { token: accessToken, user: u };
+  };
 
   const value = useMemo(
     () => ({
+      token,
       user,
-      isAuthed: !!user,
+      isAuthenticated,
+      login,
+      register,
+      logout,
 
-      async register(payload) {
-        const data = await auth.register(payload);
-        if (data.user) setUser(data.user);
-        return data;
-      },
+      // expose setters
+      setUser,
+      setToken,
 
-      async login(payload) {
-        const data = await auth.login(payload);
-
-        // If backend does not return user, fetch /me
-        if (!data.user) {
-          const me = await auth.me();
-          persistUser(me);
-          setUser(me);
-        } else {
-          setUser(data.user);
-        }
-
-        return data;
-      },
-
-      logout() {
-        clearAuth();
-        setUser(null);
-      },
+      // ✅ expose authFetch so pages can use it
+      authFetch,
     }),
-    [user]
+    [token, user, isAuthenticated]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
 }

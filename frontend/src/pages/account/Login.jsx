@@ -7,7 +7,9 @@ export default function Login() {
   const loc = useLocation();
   const { login } = useAuth();
 
-  const from = loc.state?.from?.pathname || "/";
+  // ✅ works for both: state.from = "/admin" OR state.from = { pathname: "/admin" }
+  const from =
+    (typeof loc.state?.from === "string" ? loc.state.from : loc.state?.from?.pathname) || "/";
 
   const [mode, setMode] = useState("email"); // "email" | "phone"
   const [form, setForm] = useState({
@@ -42,13 +44,19 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const payload =
-        mode === "email"
-          ? { email: form.email.trim(), password: form.password }
-          : { phone: form.phone.trim(), password: form.password };
+      const payload = {
+        identifier: mode === "email" ? form.email.trim().toLowerCase() : form.phone.trim(),
+        password: form.password,
+      };
 
-      await login(payload);
-      nav(from, { replace: true });
+      const result = await login(payload); // ✅ must return { token, user }
+
+      // ✅ single redirect decision
+      if (result?.user?.role === "admin") {
+        nav("/admin", { replace: true });
+      } else {
+        nav(from, { replace: true });
+      }
     } catch (e2) {
       setErr(e2.message || "Login failed");
     } finally {

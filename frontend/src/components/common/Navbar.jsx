@@ -1,11 +1,14 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import logo from "../../assets/logo.jpg";
-
+import { useAuth } from "../../context/AuthContext";
 
 export default function Navbar() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
+
+  const { user, isAuthenticated, logout } = useAuth();
+  console.log("[Navbar] auth:", { user, isAuthenticated });
 
   const onSubmit = (e) => {
     e.preventDefault();
@@ -13,19 +16,28 @@ export default function Navbar() {
     navigate(query ? `/products?q=${encodeURIComponent(query)}` : "/products");
   };
 
+  const onLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
+  // helper to show a short name in navbar
+  const displayName =
+    user?.name?.trim() ||
+    user?.email?.split("@")?.[0] ||
+    (user?.phone ? `User ${user.phone.slice(-4)}` : "Account");
+
   return (
     <nav className="navbar navbar-expand-lg navbar-blur sticky-top">
       <div className="container">
         <Link className="navbar-brand d-flex align-items-center gap-2" to="/">
-          <span
-            className="d-inline-flex align-items-center justify-content-center rounded-circle"
-          >
+          <span className="d-inline-flex align-items-center justify-content-center rounded-circle">
             <img
               src={logo}
               alt="Medi Suite"
               style={{
                 width: 32,
-                height:32,
+                height: 32,
                 objectFit: "contain",
               }}
             />
@@ -100,11 +112,58 @@ export default function Navbar() {
               </Link>
             </li>
 
+            {/* ✅ Auth section: Sign in OR User dropdown */}
             <li className="nav-item ms-lg-2">
-              <Link to="/login" className="btn btn-brand rounded-pill px-3">
-                <i className="bi bi-person me-2" />
-                Sign in
-              </Link>
+              {!isAuthenticated ? (
+                <Link to="/login" className="btn btn-brand rounded-pill px-3">
+                  <i className="bi bi-person me-2" />
+                  Sign in
+                </Link>
+              ) : (
+                <div className="dropdown">
+                  <button
+                    className="btn btn-outline-secondary rounded-pill px-3 dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                  >
+                    <i className="bi bi-person-circle me-2" />
+                    {displayName}
+                  </button>
+
+                  <ul className="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <Link className="dropdown-item" to="/profile">
+                        <i className="bi bi-person me-2" />
+                        Profile
+                      </Link>
+                    </li>
+                    <li>
+                      <Link className="dropdown-item" to="/orders">
+                        <i className="bi bi-receipt me-2" />
+                        Orders
+                      </Link>
+                    </li>
+                    <li className="d-lg-none">
+                      <Link className="dropdown-item" to="/cart">
+                        <i className="bi bi-bag me-2" />
+                        Cart
+                      </Link>
+                    </li>
+
+                    <li>
+                      <hr className="dropdown-divider" />
+                    </li>
+
+                    <li>
+                      <button className="dropdown-item text-danger" onClick={onLogout}>
+                        <i className="bi bi-box-arrow-right me-2" />
+                        Logout
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              )}
             </li>
           </ul>
         </div>

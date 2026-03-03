@@ -7,6 +7,7 @@ import {
   removeCartItem,
   mergeGuestCart,
 } from "../controllers/cart.controller.js";
+import { reorderFromOrder } from "../controllers/cart.controller.js";
 
 export const cartRoutes = Router();
 
@@ -17,3 +18,5 @@ cartRoutes.delete("/items/:id", requireAuth, removeCartItem);
 
 // merge guest cart into DB cart
 cartRoutes.post("/merge", requireAuth, mergeGuestCart);
+
+cartRoutes.post("/reorder/:id", requireAuth, reorderFromOrder);
