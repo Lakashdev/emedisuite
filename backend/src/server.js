@@ -1,6 +1,7 @@
 import "./env.js";
 import express from "express";
 import cors from "cors";
+import path from "path";
 /* import dotenv from "dotenv"; */
 import { prisma } from "./config/prisma.js";
 import { testRoutes } from "./routes/test.routes.js";
@@ -45,6 +46,8 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
+
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.get("/health", (req, res) => {
   res.json({ ok: true, message: "Backend is running" });

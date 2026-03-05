@@ -64,6 +64,10 @@ export const getProductById = async (req, res) => {
 };
 
 export const createProduct = async (req, res) => {
+  // ✅ multipart/form-data: JSON comes in req.body.data
+  const raw = req.body?.data;
+  const body = raw ? JSON.parse(raw) : req.body;
+
   const {
     name,
     slug,
@@ -79,9 +83,8 @@ export const createProduct = async (req, res) => {
     prescriptionRequired,
     status,
     featured,
-    images,
     variants,
-  } = req.body;
+  } = body;
 
   if (!name || !slug || !brandId || !categoryId) {
     return res.status(400).json({ message: "name, slug, brandId, categoryId are required" });
@@ -96,6 +99,9 @@ export const createProduct = async (req, res) => {
   const category = await prisma.category.findUnique({ where: { id: categoryId } });
   if (!category) return res.status(400).json({ message: "invalid categoryId" });
 
+  // ✅ uploaded files -> stored urls
+  const imageUrls = (req.files || []).map((f) => `/uploads/products/${f.filename}`);
+
   const product = await prisma.product.create({
     data: {
       name,
@@ -107,7 +113,7 @@ export const createProduct = async (req, res) => {
       baseStock: Number(baseStock),
 
       discountType: discountType || null,
-      discountValue: discountValue === undefined ? null : Number(discountValue),
+      discountValue: discountValue === undefined || discountValue === null ? null : Number(discountValue),
       discountStartAt: discountStartAt ? new Date(discountStartAt) : null,
       discountEndAt: discountEndAt ? new Date(discountEndAt) : null,
 
@@ -115,16 +121,16 @@ export const createProduct = async (req, res) => {
       status: status || "active",
       featured: Boolean(featured || false),
 
-      images: images?.length
+      images: imageUrls.length
         ? {
-            create: images.map((url, idx) => ({
+            create: imageUrls.map((url, idx) => ({
               url,
               position: idx,
             })),
           }
         : undefined,
 
-      variants: variants?.length
+      variants: Array.isArray(variants) && variants.length
         ? {
             create: variants.map((v) => ({
               name: v.name,
@@ -135,7 +141,7 @@ export const createProduct = async (req, res) => {
           }
         : undefined,
     },
-    include: { images: true, variants: true },
+    include: { images: true, variants: true, brand: true, category: true },
   });
 
   res.status(201).json({ product });
@@ -143,6 +149,11 @@ export const createProduct = async (req, res) => {
 
 export const updateProduct = async (req, res) => {
   const { id } = req.params;
+
+  // ✅ multipart/form-data: JSON comes in req.body.data
+  const raw = req.body?.data;
+  const body = raw ? JSON.parse(raw) : req.body;
+
   const {
     name,
     slug,
@@ -158,14 +169,15 @@ export const updateProduct = async (req, res) => {
     prescriptionRequired,
     status,
     featured,
-    images,
     variants,
-  } = req.body;
+  } = body;
 
   const exists = await prisma.product.findUnique({ where: { id } });
   if (!exists) return res.status(404).json({ message: "product not found" });
 
-  // We will "replace" images and variants if provided (simple MVP behavior)
+  // ✅ new uploaded images (if any)
+  const newImageUrls = (req.files || []).map((f) => `/uploads/products/${f.filename}`);
+
   const data = {
     name: name ?? undefined,
     slug: slug ?? undefined,
@@ -178,9 +190,18 @@ export const updateProduct = async (req, res) => {
     baseStock: baseStock === undefined ? undefined : Number(baseStock),
 
     discountType: discountType === undefined ? undefined : (discountType || null),
-    discountValue: discountValue === undefined ? undefined : (discountValue === null ? null : Number(discountValue)),
-    discountStartAt: discountStartAt === undefined ? undefined : (discountStartAt ? new Date(discountStartAt) : null),
-    discountEndAt: discountEndAt === undefined ? undefined : (discountEndAt ? new Date(discountEndAt) : null),
+    discountValue:
+      discountValue === undefined
+        ? undefined
+        : (discountValue === null ? null : Number(discountValue)),
+    discountStartAt:
+      discountStartAt === undefined
+        ? undefined
+        : (discountStartAt ? new Date(discountStartAt) : null),
+    discountEndAt:
+      discountEndAt === undefined
+        ? undefined
+        : (discountEndAt ? new Date(discountEndAt) : null),
 
     prescriptionRequired: prescriptionRequired === undefined ? undefined : Boolean(prescriptionRequired),
     status: status ?? undefined,
@@ -188,17 +209,23 @@ export const updateProduct = async (req, res) => {
   };
 
   const product = await prisma.$transaction(async (tx) => {
-    if (Array.isArray(images)) {
+    // ✅ Replace images only if new files were uploaded
+    if (newImageUrls.length) {
       await tx.productImage.deleteMany({ where: { productId: id } });
-      if (images.length) {
-        await tx.productImage.createMany({
-          data: images.map((url, idx) => ({ url, position: idx, productId: id })),
-        });
-      }
+
+      await tx.productImage.createMany({
+        data: newImageUrls.map((url, idx) => ({
+          url,
+          position: idx,
+          productId: id,
+        })),
+      });
     }
 
+    // ✅ Replace variants if provided
     if (Array.isArray(variants)) {
       await tx.productVariant.deleteMany({ where: { productId: id } });
+
       if (variants.length) {
         await tx.productVariant.createMany({
           data: variants.map((v) => ({
