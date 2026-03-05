@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "/api";
 
 export default function Brands() {
   const { token } = useAuth();
