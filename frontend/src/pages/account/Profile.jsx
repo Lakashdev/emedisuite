@@ -55,10 +55,10 @@ export default function Profile() {
       try {
         // Load profile + dashboard data in parallel
         const [meRes, sumRes, ordRes, prodRes] = await Promise.all([
-          authFetch(`${API}/api/profile/me`, { headers: { Authorization: `Bearer ${token}` } }),
-          authFetch(`${API}/api/profile/summary`, { headers: { Authorization: `Bearer ${token}` } }),
-          authFetch(`${API}/api/profile/recent-orders?limit=5`, { headers: { Authorization: `Bearer ${token}` } }),
-          authFetch(`${API}/api/profile/recent-products?limit=8`, { headers: { Authorization: `Bearer ${token}` } }),
+          authFetch(`${API}/profile/me`, { headers: { Authorization: `Bearer ${token}` } }),
+          authFetch(`${API}/profile/summary`, { headers: { Authorization: `Bearer ${token}` } }),
+          authFetch(`${API}/profile/recent-orders?limit=5`, { headers: { Authorization: `Bearer ${token}` } }),
+          authFetch(`${API}/profile/recent-products?limit=8`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
 
         const me = await meRes.json();
@@ -108,7 +108,7 @@ export default function Profile() {
 
     setSaving(true);
     try {
-      const res = await authFetch(`${API}/api/profile/me`, {
+      const res = await authFetch(`${API}/profile/me`, {
         method: "PUT",
         headers,
         body: JSON.stringify({
@@ -140,7 +140,7 @@ export default function Profile() {
 
     setVerifying(true);
     try {
-      const res = await authFetch(`${API}/api/auth/verify-email`, {
+      const res = await authFetch(`${API}/auth/verify-email`, {
         method: "POST",
         headers,
         body: JSON.stringify({ code }),
@@ -167,7 +167,7 @@ export default function Profile() {
     setVerifyMsg("");
     setResending(true);
     try {
-      const res = await authFetch(`${API}/api/auth/resend-email-code`, {
+      const res = await authFetch(`${API}/auth/resend-email-code`, {
         method: "POST",
         headers,
       });
