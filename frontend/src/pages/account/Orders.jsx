@@ -3,8 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import OrderStatusBadge from "../../components/common/OrderStatusBadge";
 
-const API = "http://localhost:5000";
-
+/* const API = "http://localhost:5000"; */
+const API = "/api";
 const money = (n) => `Rs. ${Number(n || 0).toLocaleString("en-US")}`;
 const fmt = (d) => (d ? new Date(d).toLocaleString() : "-");
 
