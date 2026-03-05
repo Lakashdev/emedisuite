@@ -29,7 +29,7 @@ export default function Orders() {
       setErr("");
       setLoading(true);
       try {
-        const res = await fetch(`${API}/api/orders/my`, { headers });
+        const res = await fetch(`${API}/orders/my`, { headers });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load orders");
 
@@ -70,7 +70,7 @@ export default function Orders() {
     setErr("");
     setToast("");
     try {
-      const res = await fetch(`${API}/api/cart/reorder/${orderId}`, {
+      const res = await fetch(`${API}/cart/reorder/${orderId}`, {
         method: "POST",
         headers,
       });

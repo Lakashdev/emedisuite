@@ -27,7 +27,7 @@ export default function OrderDetail() {
       setErr("");
       setLoading(true);
       try {
-        const res = await fetch(`${API}/api/orders/${id}`, { headers: authHeader });
+        const res = await fetch(`${API}/orders/${id}`, { headers: authHeader });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Failed to load order");
 
@@ -46,7 +46,7 @@ export default function OrderDetail() {
   const reorder = async () => {
     setErr("");
     try {
-      const res = await fetch(`${API}/api/cart/reorder/${id}`, { method: "POST", headers: authHeader });
+      const res = await fetch(`${API}/cart/reorder/${id}`, { method: "POST", headers: authHeader });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Reorder failed");
       nav("/cart");
@@ -60,7 +60,7 @@ export default function OrderDetail() {
     const reason = prompt("Cancel reason (optional):") || "";
     try {
       // depends how you mount orderActionsRoutes
-      const res = await fetch(`${API}/api/orders/${id}/cancel`, {
+      const res = await fetch(`${API}/orders/${id}/cancel`, {
         method: "POST",
         headers: authHeader,
         body: JSON.stringify({ reason }),
