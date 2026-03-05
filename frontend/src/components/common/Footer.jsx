@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import logo from "../../assets/logo.jpg";
 
 export default function Footer() {
   const year = new Date().getFullYear();
@@ -10,20 +11,23 @@ export default function Footer() {
           {/* Brand */}
           <div className="col-12 col-lg-4">
             <Link className="text-decoration-none d-flex align-items-center gap-2" to="/">
-              <span
-                className="d-inline-flex align-items-center justify-content-center rounded-circle"
-                style={{
-                  width: 40,
-                  height: 40,
-                  background: "rgba(43,138,126,.12)",
-                  border: "1px solid rgba(43,138,126,.18)",
-                }}
-              >
-                <i className="bi bi-droplet-fill" style={{ color: "var(--brand)" }} />
-              </span>
+             <span className="d-inline-flex align-items-center justify-content-center rounded-circle">
+                         <img
+                           src={logo}
+                           alt="Medi Suite"
+                           style={{
+                             width: 32,
+                             height: 32,
+                             objectFit: "contain",
+                           }}
+                         />
+                       </span>
               <span className="fw-semibold fs-5 text-dark">
-                Care<span style={{ color: "var(--brand)" }}>Pharm</span>
+               <span style={{ color: "var(--brand)" }}>Medi</span>
+               <span style={{ color: "var(--accent)" }}>suite</span>
+        
               </span>
+
             </Link>
 
             <p className="text-secondary mt-3 mb-3" style={{ maxWidth: 360 }}>

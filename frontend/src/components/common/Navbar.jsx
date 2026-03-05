@@ -44,7 +44,7 @@ export default function Navbar() {
           </span>
           <span className="fw-semibold" style={{ letterSpacing: ".2px" }}>
             <span style={{ color: "var(--brand)" }}>Medi</span>
-            <span style={{ color: "var(--accent)" }}>Suite</span>
+            <span style={{ color: "var(--accent)" }}>suite</span>
           </span>
           <span className="badge badge-soft ms-2 d-none d-md-inline">Skincare • Wellness</span>
         </Link>
