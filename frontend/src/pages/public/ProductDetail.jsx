@@ -56,7 +56,8 @@ export default function ProductDetail() {
   const [activeTab, setActiveTab] = useState("desc"); // desc | how | reviews
   const [selectedVariantId, setSelectedVariantId] = useState("");
   const [qty, setQty] = useState(1);
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState({ msg: "", type: "success" });
+  const [cartLoading, setCartLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
@@ -90,7 +91,7 @@ export default function ProductDetail() {
           return;
         }
 
-        // If your list already includes images/variants it’s enough.
+        // If your list already includes images/variants it's enough.
         // But to be safe, we fetch full by id (includes images/variants/brand/category)
         const detail = await fetchJson(`${API_BASE}/products/${found.id}`);
         const full = detail.product || found;
@@ -154,7 +155,7 @@ export default function ProductDetail() {
 
   const activeImageUrl = imageUrls[activeImg] || imageUrls[0] || "";
 
-  // Guest cart (same logic as your demo)
+  // --- Guest cart helpers ---
   function getGuestCart() {
     try {
       return JSON.parse(localStorage.getItem("guest_cart") || "[]");
@@ -176,19 +177,53 @@ export default function ProductDetail() {
     setGuestCart(cart);
   }
 
-  const onAddToCart = () => {
-    if (!product || !inStock) return;
+  // --- Add to cart ---
+  // FIX: tries the real API first (works for logged-in users whose token is in
+  // the cookie / Authorization header). Falls back to the guest localStorage
+  // cart when the server returns 401 (not authenticated).
+  const onAddToCart = async () => {
+    if (!product || !inStock || cartLoading) return;
 
     const safeQty = Math.min(qty, maxQty);
+    const variantId = selectedVariant ? selectedVariant.id : null;
 
-    addToGuestCart({
-      productId: product.id,
-      variantId: selectedVariant ? selectedVariant.id : null,
-      qty: safeQty,
-    });
+    setCartLoading(true);
 
-    setToast("Added to cart.");
-    window.setTimeout(() => setToast(""), 1800);
+    try {
+      const body = {
+        productId: product.id,
+        quantity: safeQty,
+        ...(variantId ? { variantId } : {}),
+      };
+
+      const token = localStorage.getItem("token");
+      const data = await fetchJson(`${API_BASE}/cart/items`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+
+      const warning = data?.warning;
+      setToast({
+        msg: warning ? `Added to cart — ${warning}` : "Added to cart.",
+        type: warning ? "warning" : "success",
+      });
+    } catch (e) {
+      if (e.status === 401) {
+        // Not logged in → fall back to guest cart
+        addToGuestCart({ productId: product.id, variantId, qty: safeQty });
+        setToast({ msg: "Added to cart (guest).", type: "success" });
+      } else {
+        // Real error from the server (stock issue, bad request, etc.)
+        setToast({ msg: e.message || "Could not add to cart.", type: "danger" });
+      }
+    } finally {
+      setCartLoading(false);
+      window.setTimeout(() => setToast({ msg: "", type: "success" }), 2500);
+    }
   };
 
   if (loading) {
@@ -396,7 +431,7 @@ export default function ProductDetail() {
                     className="btn btn-outline-secondary"
                     type="button"
                     onClick={() => setQty((x) => Math.max(1, x - 1))}
-                    disabled={!inStock}
+                    disabled={!inStock || cartLoading}
                   >
                     -
                   </button>
@@ -407,7 +442,7 @@ export default function ProductDetail() {
                     className="btn btn-outline-secondary"
                     type="button"
                     onClick={() => setQty((x) => Math.min(maxQty, x + 1))}
-                    disabled={!inStock}
+                    disabled={!inStock || cartLoading}
                   >
                     +
                   </button>
@@ -419,13 +454,27 @@ export default function ProductDetail() {
                 <Link to="/cart" className="btn btn-outline-secondary rounded-pill px-4">
                   Go to cart
                 </Link>
-                <button className="btn btn-brand rounded-pill px-4" type="button" onClick={onAddToCart} disabled={!inStock}>
-                  Add to cart
+                <button
+                  className="btn btn-brand rounded-pill px-4"
+                  type="button"
+                  onClick={onAddToCart}
+                  disabled={!inStock || cartLoading}
+                >
+                  {cartLoading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                      Adding…
+                    </>
+                  ) : (
+                    "Add to cart"
+                  )}
                 </button>
               </div>
             </div>
 
-            {toast ? <div className="alert alert-success mt-3 mb-0 py-2">{toast}</div> : null}
+            {toast.msg ? (
+              <div className={`alert alert-${toast.type} mt-3 mb-0 py-2`}>{toast.msg}</div>
+            ) : null}
           </div>
 
           {/* Tabs */}

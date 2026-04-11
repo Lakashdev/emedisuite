@@ -2,6 +2,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import logo from "../../assets/logo.jpg";
 import { useAuth } from "../../context/AuthContext";
+import 'bootstrap-icons/font/bootstrap-icons.css';
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -9,6 +10,9 @@ export default function Navbar() {
 
   const { user, isAuthenticated, logout } = useAuth();
   console.log("[Navbar] auth:", { user, isAuthenticated });
+
+  // Mock cart data - replace with actual cart context/state
+  const cartCount = 3; // TODO: connect to actual cart state
 
   const onSubmit = (e) => {
     e.preventDefault();
@@ -99,20 +103,46 @@ export default function Navbar() {
               </NavLink>
             </li>
 
+            {/* Cart - Mobile */}
             <li className="nav-item d-lg-none">
               <NavLink className="nav-link" to="/cart">
+                <i className="bi bi-bag me-2" />
                 Cart
               </NavLink>
             </li>
 
+            {/* Cart - Desktop with Badge */}
             <li className="nav-item ms-lg-2 d-none d-lg-inline">
-              <Link to="/cart" className="btn btn-outline-secondary rounded-pill px-3">
-                <i className="bi bi-bag me-2" />
+              <Link 
+                to="/cart" 
+                className="btn btn-outline-secondary rounded-pill px-3 position-relative"
+                style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
+              >
+                <i className="bi bi-bag" style={{ fontSize: "1.1rem" }} />
                 Cart
+                {cartCount > 0 && (
+                  <span
+                    className="position-absolute badge rounded-circle bg-danger"
+                    style={{
+                      top: "-8px",
+                      right: "-8px",
+                      width: "22px",
+                      height: "22px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.7rem",
+                      fontWeight: "600",
+                      padding: "0",
+                    }}
+                  >
+                    {cartCount}
+                  </span>
+                )}
               </Link>
             </li>
 
-            {/* ✅ Auth section: Sign in OR User dropdown */}
+            {/* Auth Section */}
             <li className="nav-item ms-lg-2">
               {!isAuthenticated ? (
                 <Link to="/login" className="btn btn-brand rounded-pill px-3">
@@ -122,16 +152,33 @@ export default function Navbar() {
               ) : (
                 <div className="dropdown">
                   <button
-                    className="btn btn-outline-secondary rounded-pill px-3 dropdown-toggle"
+                    className="btn btn-outline-secondary rounded-pill p-0 dropdown-toggle"
                     type="button"
                     data-bs-toggle="dropdown"
                     aria-expanded="false"
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "2px solid rgba(15,23,42,.15)",
+                    }}
                   >
-                    <i className="bi bi-person-circle me-2" />
-                    {displayName}
+                    <i className="bi bi-person-circle" style={{ fontSize: "1.3rem" }} />
                   </button>
 
                   <ul className="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <div className="dropdown-item-text">
+                        <div className="small text-secondary">Logged in as</div>
+                        <div className="fw-semibold">{displayName}</div>
+                      </div>
+                    </li>
+                    <li>
+                      <hr className="dropdown-divider" />
+                    </li>
+
                     <li>
                       <Link className="dropdown-item" to="/profile">
                         <i className="bi bi-person me-2" />

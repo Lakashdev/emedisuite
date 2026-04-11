@@ -105,6 +105,7 @@ model Product {
   updatedAt            DateTime              @updatedAt
   checkoutSessionItems CheckoutSessionItem[]
   returnRequestItems   ReturnRequestItem[]
+  heroSlides HeroSlide[]
 
   @@index([brandId])
   @@index([categoryId])
@@ -191,6 +192,56 @@ model StoreSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+
+model HeroSlide {
+  id       String @id @default(cuid())
+  position Int    @default(0) // sort order
+
+  // Left side
+  tag      String // "Baby & Family"
+  headline String // "Gentle Care\nfor Every One."  (use \n for line break)
+  sub      String // subtitle text
+  pill     String // offer pill text e.g. "Dermatologist tested"
+
+  // Buttons
+  ctaLabel  String // "Shop Baby Care"
+  ctaHref   String // "/products?category=baby-care"
+  ctaAltLabel String // "Family wellness"
+  ctaAltHref  String // "/products"
+
+  // Right card
+  featName  String  // "Baby Wash Gentle"
+  featPrice Int     // 599  (in NPR, no commas)
+  featOld   Int     // 749
+  icon      String  @default("bi-stars") // bootstrap icon class
+
+  // Trust badges (bottom of hero card)
+  stat1Val   String @default("100%")
+  stat1Label String @default("Genuine")
+  stat2Val   String @default("Same Day")
+  stat2Label String @default("Delivery")
+
+  // Micro trust line (bottom left)
+  micro1 String @default("Verified brands")
+  micro2 String @default("Delivers in Kathmandu")
+  micro3 String @default("Licensed pharmacy")
+
+  // Styling
+  accent String @default("#6BBF4E") // hex color
+  bg     String @default("linear-gradient(135deg, #E8F5E2 0%, #F4F8F0 55%, #EEF2F8 100%)")
+
+  // Optionally link to a real product
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  status    String   @default("active") // active | draft
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([position])
+  @@index([productId])
 }
 
 model Order {
@@ -377,4 +428,55 @@ model PasswordReset {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model StoreInfo {
+  id String @id @default("singleton")
+
+  // Basic info
+  storeName   String @default("Medisuite")
+  tagline     String @default("Pharmacy essentials and skincare you can trust.")
+  description String @default("COD delivery with ring-road pricing and clear return rules for eligible products.")
+
+  // Contact
+  phone   String @default("+977 9860802178")
+  email   String @default("support@medisuite.com")
+  address String @default("Kathmandu, Nepal")
+
+  // Hours
+  openingHours String @default("9:00 AM – 7:00 PM")
+  openDays     String @default("Sunday – Friday")
+
+  // Social
+  instagramUrl String @default("")
+  facebookUrl  String @default("")
+  twitterUrl   String @default("")
+  tiktokUrl    String @default("")
+
+  // Footer newsletter
+  newsletterEnabled Boolean @default(true)
+  newsletterText    String  @default("Get offers + skincare tips")
+
+  // Footer legal links
+  termsUrl   String @default("/pages/terms")
+  privacyUrl String @default("/pages/privacy")
+  refundUrl  String @default("/pages/refund")
+
+  // About page
+  aboutHeadline    String @default("About Us")
+  aboutSubheadline String @default("We are a modern pharmacy and skincare store.")
+  aboutBody        String @default("Focused on quality, safety, and everyday wellness. We deliver genuine products with COD across Kathmandu.")
+  aboutMission     String @default("To make quality healthcare accessible for every family.")
+  aboutVision      String @default("Nepal's most trusted online pharmacy.")
+
+  // About page stats (shown as highlights)
+  stat1Val   String @default("100%")
+  stat1Label String @default("Genuine Products")
+  stat2Val   String @default("2000+")
+  stat2Label String @default("Happy Customers")
+  stat3Val   String @default("Same Day")
+  stat3Label String @default("Delivery")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

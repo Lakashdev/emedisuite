@@ -38,7 +38,7 @@ export const getMyCart = async (req, res) => {
     include: {
       items: {
         include: {
-          product: { select: { id: true, name: true, slug: true, basePrice: true, baseStock: true } },
+          product: { select: { id: true, name: true, slug: true, basePrice: true, baseStock: true, images: { select: { url: true }, orderBy: { position: 'asc' }, take: 1 } } },
           variant: { select: { id: true, name: true, price: true, stock: true } },
         },
         orderBy: { createdAt: "asc" },
@@ -63,30 +63,36 @@ export const addCartItem = async (req, res) => {
   const stockCheck = await getAvailableStock(productId, variantId);
   if (!stockCheck.ok) return res.status(400).json({ message: stockCheck.message });
 
-  const existing = await prisma.cartItem.findUnique({
+  // findFirst works correctly whether variantId is null or a real id.
+  // We intentionally avoid upsert here because Prisma's compound unique index
+  // rejects null in the where clause (PrismaClientValidationError).
+  const existing = await prisma.cartItem.findFirst({
     where: {
-      cartId_productId_variantId: {
-        cartId: cart.id,
-        productId,
-        variantId,
-      },
+      cartId: cart.id,
+      productId,
+      variantId: variantId ?? null,
     },
   });
 
   const desiredQty = (existing?.quantity || 0) + qty;
   const finalQty = Math.min(desiredQty, stockCheck.stock);
 
-  const item = await prisma.cartItem.upsert({
-    where: {
-      cartId_productId_variantId: {
+  let item;
+  if (existing) {
+    item = await prisma.cartItem.update({
+      where: { id: existing.id },
+      data: { quantity: finalQty },
+    });
+  } else {
+    item = await prisma.cartItem.create({
+      data: {
         cartId: cart.id,
         productId,
-        variantId,
+        variantId: variantId ?? null,
+        quantity: finalQty,
       },
-    },
-    update: { quantity: finalQty },
-    create: { cartId: cart.id, productId, variantId, quantity: finalQty },
-  });
+    });
+  }
 
   const capped = finalQty < desiredQty;
 
@@ -222,8 +228,6 @@ export const mergeGuestCart = async (req, res) => {
   res.json({ cart: updatedCart, warnings });
 };
 
-
-
 export const reorderFromOrder = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -248,24 +252,33 @@ export const reorderFromOrder = async (req, res) => {
       select: { id: true },
     });
 
-    // add items to cart (merge quantities)
+    // add items to cart safely
     for (const it of order.items) {
-      await prisma.cartItem.upsert({
+      const existing = await prisma.cartItem.findFirst({
         where: {
-          cartId_productId_variantId: {
-            cartId: cart.id,
-            productId: it.productId,
-            variantId: it.variantId ?? null,
-          },
-        },
-        update: { quantity: { increment: it.quantity } },
-        create: {
           cartId: cart.id,
           productId: it.productId,
           variantId: it.variantId ?? null,
-          quantity: it.quantity,
         },
       });
+
+      if (existing) {
+        await prisma.cartItem.update({
+          where: { id: existing.id },
+          data: {
+            quantity: { increment: it.quantity },
+          },
+        });
+      } else {
+        await prisma.cartItem.create({
+          data: {
+            cartId: cart.id,
+            productId: it.productId,
+            variantId: it.variantId ?? null,
+            quantity: it.quantity,
+          },
+        });
+      }
     }
 
     return res.json({ message: "Items added to cart" });

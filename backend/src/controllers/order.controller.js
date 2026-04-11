@@ -1,4 +1,5 @@
 import { prisma } from "../config/prisma.js";
+import { sendOrderEmails } from "../utils/orderEmail.js";
 
 function generateOrderNumber() {
   const now = new Date();
@@ -190,6 +191,16 @@ export const placeOrder = async (req, res) => {
     if (result.error) {
       return res.status(result.error.status).json({ message: result.error.message });
     }
+    try {
+  const userRecord = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  });
+
+  await sendOrderEmails(result.order, userRecord?.email ?? null);
+} catch (emailErr) {
+  console.error("sendOrderEmails error:", emailErr);
+}
 
     return res.status(201).json({ order: result.order });
   } catch (error) {

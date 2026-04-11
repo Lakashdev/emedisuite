@@ -1,4 +1,5 @@
 import { prisma } from "../config/prisma.js";
+import { sendOrderEmails } from "../utils/orderEmail.js";
 
 const SESSION_TTL_MINUTES = 30;
 
@@ -381,6 +382,25 @@ export const confirmCheckoutSession = async (req, res) => {
     });
 
     if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+
+    // Send confirmation emails (non-blocking — never fail the response)
+   try {
+      const orderWithItems = result.order;
+      const userRecord = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+
+      console.log("About to send order emails");
+      console.log("Order ID:", orderWithItems?.id);
+      console.log("Customer email from DB:", userRecord?.email || null);
+      console.log("Admin email from env:", process.env.ADMIN_EMAIL || null);
+      console.log("MAIL_FROM:", process.env.MAIL_FROM || null);
+
+      await sendOrderEmails(orderWithItems, userRecord?.email ?? null);
+    } catch (emailErr) {
+      console.error("sendOrderEmails error:", emailErr);
+    }
 
     return res.status(201).json({ order: result.order });
   } catch (err) {

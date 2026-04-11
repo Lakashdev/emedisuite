@@ -12,3 +12,4 @@ export const mailer = nodemailer.createTransport({
         rejectUnauthorized: false, // helps on some Windows setups
     },
 });
+

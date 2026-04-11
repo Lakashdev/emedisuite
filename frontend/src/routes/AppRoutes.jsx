@@ -36,6 +36,15 @@ import AdminCategories from "../pages/admin/Categories";
 import AdminProducts from "../pages/admin/Products";
 
 
+/* Setting */
+
+import Settings from "../pages/admin/Settings";
+import HeroSlides from "../pages/admin/HeroSlides";
+import StoreInfoSettings from "../pages/admin/StoreInfoSettings";
+
+
+
+
 
 export default function AppRoutes() {
   return (
@@ -80,9 +89,14 @@ export default function AppRoutes() {
             <Route path="/admin/categories" element={<AdminCategories />} />
             <Route path="/admin/products" element={<AdminProducts />} />  
             <Route path="/admin/orders" element={<div>Orders</div>} />
-            <Route path="/admin/settings" element={<div>Settings</div>} />
+            {/* Settings */}
+            <Route path="/admin/settings" element={<Settings />} />
+            <Route path="/admin/settings/hero-slides" element={<HeroSlides />} />
+            <Route path="/admin/settings/store-info" element={<StoreInfoSettings />} />
           </Route>
         </Route>
+
+        
 
       </Routes>
   );

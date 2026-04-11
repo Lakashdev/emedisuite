@@ -16,14 +16,10 @@ import { checkoutSessionRoutes } from "./routes/checkoutSession.routes.js";
 import { orderActionsRoutes } from "./routes/orderActions.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
 import { adminRoutes } from "./routes/admin.routes.js";
+import { heroSlideRoutes } from "./routes/heroSlide.routes.js";
+import { storeInfoRoutes } from "./routes/storeInfo.routes.js";
 
 
-
-
-
-
-
-/* dotenv.config({ path: ".env" }); */
 
 const app = express();
 
@@ -37,7 +33,7 @@ app.use(
     credentials: false, // ✅ set false unless you are using cookies
   })
 );
-/* app.options("*", cors({ origin: FRONTEND_URL })); */
+
 
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
@@ -87,6 +83,8 @@ app.use("/api/checkout-sessions", checkoutSessionRoutes);
 app.use("/api", orderActionsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/hero-slides", heroSlideRoutes);
+app.use("/api/store-info", storeInfoRoutes);
 
 
 
