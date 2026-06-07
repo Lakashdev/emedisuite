@@ -4,6 +4,7 @@ import { uploadProductImages } from "../config/upload.js";
 
 import {
   listProducts,
+  listBestSellers,
   getProductById,
   createProduct,
   updateProduct,
@@ -14,6 +15,7 @@ export const productRoutes = Router();
 
 // public
 productRoutes.get("/", listProducts);
+productRoutes.get("/best-sellers", listBestSellers);
 productRoutes.get("/:id", getProductById);
 
 // admin

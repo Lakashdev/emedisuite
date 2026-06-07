@@ -5,6 +5,15 @@ import { Link } from "react-router-dom";
 
 const settingsSections = [
   {
+    href: "/admin/settings/delivery",
+    icon: "bi-truck",
+    color: "#1B3D6E",
+    bg: "#EEF2F8",
+    border: "#bfdbfe",
+    title: "Delivery Settings",
+    desc: "Manage delivery fees, the Valley free-delivery threshold, and supported cities.",
+  },
+  {
     href: "/admin/settings/hero-slides",
     icon: "bi-images",
     color: "#6BBF4E",

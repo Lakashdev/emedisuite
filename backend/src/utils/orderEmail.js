@@ -98,6 +98,11 @@ function pricingBlock(order) {
 }
 
 function deliveryBlock(order) {
+  const zoneLabel =
+    order.deliveryZone === "inside_valley" || order.deliveryZone === "inside"
+      ? "Inside Kathmandu Valley"
+      : "Outside Kathmandu Valley";
+
   return `
     <div style="background:#f8fafc;border-radius:10px;padding:16px 18px;margin-top:16px;font-size:13px;color:#475569;line-height:1.8;">
       <div style="font-weight:700;color:#1B3D6E;margin-bottom:6px;">Delivery Details</div>
@@ -105,7 +110,7 @@ function deliveryBlock(order) {
       <div><b>Phone:</b> ${order.phone}</div>
       <div><b>Address:</b> ${order.addressLine}${order.area ? `, ${order.area}` : ""}${order.landmark ? ` (Near ${order.landmark})` : ""}</div>
       <div><b>City:</b> ${order.city || "Kathmandu"}</div>
-      <div><b>Zone:</b> ${order.deliveryZone === "inside" ? "Inside Ring Road" : "Outside Ring Road"}</div>
+      <div><b>Zone:</b> ${zoneLabel}</div>
       <div><b>Payment:</b> ${order.paymentMethod}</div>
       ${order.notes ? `<div><b>Notes:</b> ${order.notes}</div>` : ""}
     </div>`;
@@ -116,7 +121,7 @@ function buildCustomerHtml(order) {
   const content = `
     <div style="font-size:24px;font-weight:800;color:#1B3D6E;margin-bottom:4px;">Order Confirmed! 🎉</div>
     <div style="font-size:14px;color:#64748b;margin-bottom:24px;">
-      Hi ${order.fullName}, your order has been placed successfully.
+      Hi ${order.fullName}, your order has been placed successfully. It will be delivered within 2 days.
     </div>
 
     <div style="background:${GREEN};border-radius:10px;padding:14px 18px;display:inline-block;margin-bottom:24px;">
@@ -131,7 +136,7 @@ function buildCustomerHtml(order) {
 
     <div style="margin-top:24px;padding:14px 18px;border-radius:10px;background:#EEF2F8;font-size:13px;color:#475569;line-height:1.7;">
       <b>What happens next?</b><br/>
-      Our team will confirm your order shortly. You'll receive an update when it's packed and out for delivery. Payment is collected on delivery (COD).
+      Your order will be delivered within 2 days. Our team will confirm it shortly, and payment is collected on delivery (COD).
     </div>
   `;
   return baseLayout(content);
@@ -174,7 +179,8 @@ function buildAdminHtml(order) {
 function buildCustomerText(order) {
   const lines = [
     `Order Confirmed — #${order.orderNumber}`,
-    `Hi ${order.fullName}, your order has been placed.`,
+    `Hi ${order.fullName}, your order has been placed successfully.`,
+    `Your order will be delivered within 2 days.`,
     ``,
     `Items:`,
     ...order.items.map((it) => `  - ${it.productName}${it.variantName ? ` (${it.variantName})` : ""} x${it.quantity} = ${money(it.lineTotal)}`),
@@ -210,8 +216,8 @@ export async function sendOrderConfirmationToCustomer(order, userEmail) {
     return;
   }
 
-  const info = await transporter.sendMail({
-    from: process.env.MAIL_FROM,
+  const info = await mailer.sendMail({
+    from: process.env.MAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER,
     to: userEmail,
     subject: `Order Confirmed — #${order.orderNumber} | ${BRAND}`,
     text: buildCustomerText(order),
@@ -230,8 +236,8 @@ export async function sendOrderNotificationToAdmin(order) {
     return;
   }
 
-  const info = await transporter.sendMail({
-    from: process.env.MAIL_FROM,
+  const info = await mailer.sendMail({
+    from: process.env.MAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER,
     to: adminEmail,
     subject: `🛒 New Order #${order.orderNumber} — ${money(order.total)} | ${BRAND}`,
     text: buildAdminText(order),
@@ -252,4 +258,52 @@ export async function sendOrderEmails(order, userEmail) {
       console.error("Order email failed:", r.reason);
     }
   }
+}
+
+const STATUS_MESSAGES = {
+  Placed: "Your order has been placed successfully. It will be delivered within 2 days.",
+  Confirmed: "Your order has been confirmed and is being prepared.",
+  Packed: "Your order has been packed and will be dispatched soon.",
+  OutForDelivery: "Your order is out for delivery. Please keep your phone available.",
+  Delivered: "Your order has been delivered. Thank you for shopping with MediSuite.",
+  Cancelled: "Your order has been cancelled. Please contact us if you need assistance.",
+};
+
+export async function sendOrderStatusUpdateToCustomer(order, userEmail) {
+  if (!userEmail) {
+    console.warn("Customer status email skipped: no user email");
+    return;
+  }
+
+  const message = STATUS_MESSAGES[order.status] || `Your order status is now ${order.status}.`;
+  const html = baseLayout(`
+    <div style="font-size:22px;font-weight:800;color:#1B3D6E;margin-bottom:8px;">Order Status Updated</div>
+    <div style="font-size:14px;color:#64748b;margin-bottom:18px;">Hi ${order.fullName},</div>
+    <div style="font-size:14px;color:#475569;line-height:1.7;margin-bottom:18px;">${message}</div>
+    <div style="background:#EEF2F8;border-radius:10px;padding:14px 18px;font-size:13px;color:#475569;">
+      <div><b>Order:</b> #${order.orderNumber}</div>
+      <div><b>Status:</b> ${order.status}</div>
+      <div><b>Total:</b> ${money(order.total)}</div>
+    </div>
+    ${deliveryBlock(order)}
+  `);
+  const text = [
+    `Order status updated: #${order.orderNumber}`,
+    "",
+    `Hi ${order.fullName},`,
+    message,
+    "",
+    `Status: ${order.status}`,
+    `Total: ${money(order.total)}`,
+  ].join("\n");
+
+  const info = await mailer.sendMail({
+    from: process.env.MAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER,
+    to: userEmail,
+    subject: `Order #${order.orderNumber} is now ${order.status} | ${BRAND}`,
+    text,
+    html,
+  });
+
+  console.log("customer status email sent:", info.messageId);
 }

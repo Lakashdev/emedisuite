@@ -1,5 +1,6 @@
 import { prisma } from "../config/prisma.js";
 import { sendOrderEmails } from "../utils/orderEmail.js";
+import { getDeliveryQuote } from "../services/delivery.service.js";
 
 function generateOrderNumber() {
   const now = new Date();
@@ -8,15 +9,6 @@ function generateOrderNumber() {
   const d = String(now.getDate()).padStart(2, "0");
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `ORD-${y}${m}${d}-${rand}`;
-}
-
-async function getSettings(tx) {
-  const existing = await tx.storeSettings.findFirst();
-  if (existing) return existing;
-
-  return tx.storeSettings.create({
-    data: { deliveryFeeInside: 0, deliveryFeeOutside: 0 },
-  });
 }
 
 export const placeOrder = async (req, res) => {
@@ -29,15 +21,12 @@ export const placeOrder = async (req, res) => {
     area,
     landmark,
     city,
-    deliveryZone, // "inside" | "outside"
+    deliveryZoneId,
     notes,
   } = req.body;
 
-  if (!fullName || !phone || !addressLine || !deliveryZone) {
-    return res.status(400).json({ message: "fullName, phone, addressLine, deliveryZone are required" });
-  }
-  if (!["inside", "outside"].includes(deliveryZone)) {
-    return res.status(400).json({ message: "deliveryZone must be inside or outside" });
+  if (!fullName || !phone || !addressLine || !deliveryZoneId) {
+    return res.status(400).json({ message: "fullName, phone, addressLine, deliveryZoneId are required" });
   }
 
   try {
@@ -91,9 +80,8 @@ export const placeOrder = async (req, res) => {
       // MVP: discountTotal = 0 (we will add discount logic later)
       const discountTotal = 0;
 
-      const settings = await getSettings(tx);
-      const deliveryFee =
-        deliveryZone === "inside" ? settings.deliveryFeeInside : settings.deliveryFeeOutside;
+      const quote = await getDeliveryQuote(tx, deliveryZoneId, subtotal);
+      const deliveryFee = quote.deliveryFee;
 
       const total = subtotal - discountTotal + deliveryFee;
 
@@ -114,8 +102,11 @@ export const placeOrder = async (req, res) => {
           addressLine,
           area: area || null,
           landmark: landmark || null,
-          city: city || "Kathmandu",
-          deliveryZone,
+          city: quote.zone.city,
+          deliveryZone: quote.zone.areaType,
+          deliveryZoneId: quote.zone.id,
+          deliveryTierSnapshot: quote.zone.tier,
+          deliveryCitySnapshot: quote.zone.city,
           notes: notes || null,
         },
       });
@@ -205,7 +196,7 @@ export const placeOrder = async (req, res) => {
     return res.status(201).json({ order: result.order });
   } catch (error) {
     console.error("placeOrder error:", error);
-    return res.status(500).json({ message: "internal server error" });
+    return res.status(error.status || 500).json({ message: error.status ? error.message : "internal server error" });
   }
 };
 

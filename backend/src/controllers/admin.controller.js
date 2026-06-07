@@ -1,4 +1,97 @@
 import { prisma } from "../config/prisma.js";
+import { sendOrderStatusUpdateToCustomer } from "../utils/orderEmail.js";
+
+const ORDER_STATUSES = ["Placed", "Confirmed", "Packed", "OutForDelivery", "Delivered", "Cancelled"];
+
+export const listAdminOrders = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page || "1", 10));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || "20", 10)));
+    const status = req.query.status;
+    const where = status && ORDER_STATUSES.includes(status) ? { status } : {};
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        orderBy: { placedAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          user: { select: { id: true, name: true, email: true, phone: true } },
+        },
+      }),
+      prisma.order.count({ where }),
+    ]);
+
+    return res.json({ orders, total, page, limit });
+  } catch (error) {
+    console.error("LIST ADMIN ORDERS ERROR:", error);
+    return res.status(500).json({ message: "Failed to fetch orders." });
+  }
+};
+
+export const getAdminOrderById = async (req, res) => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.id },
+      include: {
+        items: true,
+        user: { select: { id: true, name: true, email: true, phone: true } },
+      },
+    });
+
+    if (!order) return res.status(404).json({ message: "Order not found." });
+    return res.json({ order });
+  } catch (error) {
+    console.error("GET ADMIN ORDER ERROR:", error);
+    return res.status(500).json({ message: "Failed to fetch order." });
+  }
+};
+
+export const updateAdminOrderStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({ message: "Invalid order status." });
+    }
+
+    const existing = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ message: "Order not found." });
+    if (existing.status === status) {
+      return res.json({ order: existing });
+    }
+
+    const order = await prisma.order.update({
+      where: { id: req.params.id },
+      data: {
+        status,
+        deliveredAt: status === "Delivered"
+          ? existing.deliveredAt || new Date()
+          : existing.deliveredAt,
+        cancelledAt: status === "Cancelled"
+          ? existing.cancelledAt || new Date()
+          : existing.cancelledAt,
+      },
+      include: { items: true },
+    });
+
+    const user = await prisma.user.findUnique({
+      where: { id: order.userId },
+      select: { email: true },
+    });
+
+    try {
+      await sendOrderStatusUpdateToCustomer(order, user?.email ?? null);
+    } catch (emailError) {
+      console.error("ORDER STATUS EMAIL ERROR:", emailError);
+    }
+
+    return res.json({ order });
+  } catch (error) {
+    console.error("UPDATE ADMIN ORDER STATUS ERROR:", error);
+    return res.status(500).json({ message: "Failed to update order status." });
+  }
+};
 
 export const getAdminStats = async (req, res) => {
   try {

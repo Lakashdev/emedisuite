@@ -9,7 +9,7 @@ export const hashOtp = (otp) =>
 
 export const sendEmailOtp = async (toEmail, otp) => {
     await mailer.sendMail({
-        from: process.env.MAIL_FROM,
+        from: process.env.MAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER,
         to: toEmail,
         subject: "Your MediSuite verification code",
         text: `Your verification code is ${otp}. It expires in ${process.env.EMAIL_OTP_EXP_MIN || 10} minutes.`,

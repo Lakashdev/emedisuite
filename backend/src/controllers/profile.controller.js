@@ -1,4 +1,5 @@
 import { prisma } from "../config/prisma.js";
+import { genOtp6, hashOtp, sendEmailOtp } from "../utils/emailOtp.js";
 
 // GET /api/profile/me
 export async function getMe(req, res) {
@@ -42,6 +43,14 @@ export async function updateMe(req, res) {
       return res.status(400).json({ message: "Name is required" });
     }
 
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    const emailChanged = existing?.email !== cleanEmail;
+    const otp = emailChanged && cleanEmail ? genOtp6() : null;
+    const expMin = Number(process.env.EMAIL_OTP_EXP_MIN || 10);
+
     // Optional: prevent empty string stored as email/phone
     // If you want to keep existing when user sends empty, do it on frontend.
     const updated = await prisma.user.update({
@@ -50,6 +59,13 @@ export async function updateMe(req, res) {
         name: cleanName,
         email: cleanEmail,
         phone: cleanPhone,
+        ...(emailChanged ? {
+          emailVerified: false,
+          emailOtpHash: otp ? hashOtp(otp) : null,
+          emailOtpExpiresAt: otp ? new Date(Date.now() + expMin * 60 * 1000) : null,
+          emailOtpAttempts: 0,
+          emailOtpLastSentAt: otp ? new Date() : null,
+        } : {}),
       },
       select: {
         id: true,
@@ -59,8 +75,15 @@ export async function updateMe(req, res) {
         role: true,
         createdAt: true,
         updatedAt: true,
+        emailVerified: true,
       },
     });
+
+    if (otp) {
+      sendEmailOtp(cleanEmail, otp).catch((err) =>
+        console.error("sendEmailOtp failed after profile update:", err)
+      );
+    }
 
     return res.json({ message: "Profile updated", user: updated });
   } catch (err) {

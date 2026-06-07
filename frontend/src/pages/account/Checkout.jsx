@@ -49,12 +49,12 @@ function Steps({ step }) {
 }
 
 /* ─── Price summary sidebar ─── */
-function PriceSummary({ items, deliveryFee, deliveryZone, loading }) {
+function PriceSummary({ items, deliveryFee, deliveryZoneId, loading }) {
   const subtotal = items.reduce((sum, it) => {
     const price = it.variant ? it.variant.price : it.product.basePrice;
     return sum + price * it.quantity;
   }, 0);
-  const total = subtotal + (deliveryZone ? deliveryFee : 0);
+  const total = subtotal + (deliveryZoneId ? deliveryFee : 0);
 
   return (
     <div style={{
@@ -88,8 +88,8 @@ function PriceSummary({ items, deliveryFee, deliveryZone, loading }) {
           <span>Delivery fee</span>
           {loading ? (
             <span style={{ color: "#94a3b8" }}>calculating…</span>
-          ) : !deliveryZone ? (
-            <span style={{ color: "#94a3b8" }}>select zone</span>
+          ) : !deliveryZoneId ? (
+            <span style={{ color: "#94a3b8" }}>select city</span>
           ) : (
             <span style={{ fontWeight: 600, color: deliveryFee === 0 ? "#6BBF4E" : "#1e293b" }}>
               {deliveryFee === 0 ? "Free" : money(deliveryFee)}
@@ -222,12 +222,7 @@ function StepSelectItems({ cartItems, selected, onToggle, onToggleAll, onNext })
 }
 
 /* ─── STEP 2: Delivery form ─── */
-const ZONE_OPTIONS = [
-  { value: "inside", label: "Inside Ring Road", sub: "Thamel, Baluwatar, Lazimpat, Naxal, New Baneshwor, etc." },
-  { value: "outside", label: "Outside Ring Road", sub: "Bhaktapur, Lalitpur, Budhanilkantha, Tokha, Jorpati, etc." },
-];
-
-function StepDelivery({ form, onChange, deliveryFee, settingsLoading, onBack, onNext }) {
+function StepDelivery({ form, onChange, zones, quote, settingsLoading, onBack, onNext }) {
   const inputStyle = {
     width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
     border: "1.5px solid #e2e8f0", outline: "none", background: "#fff",
@@ -235,52 +230,57 @@ function StepDelivery({ form, onChange, deliveryFee, settingsLoading, onBack, on
   };
   const labelStyle = { fontSize: 12.5, fontWeight: 700, color: "#475569", marginBottom: 6, display: "block" };
 
-  const valid = form.fullName && form.phone && form.addressLine && form.deliveryZone;
+  const availableCities = zones.filter((zone) => zone.areaType === form.areaType);
+  const valid = form.fullName && form.phone && form.addressLine && form.deliveryZoneId;
 
   return (
     <div>
       <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1B3D6E", marginBottom: 4 }}>Delivery Details</h2>
       <p style={{ color: "#64748b", fontSize: 14, marginBottom: 24 }}>Where should we deliver your order?</p>
 
-      {/* Zone picker */}
-      <div style={{ marginBottom: 24 }}>
-        <label style={labelStyle}>Delivery Zone <span style={{ color: "#ef4444" }}>*</span></label>
-        <div style={{ display: "flex", gap: 12 }}>
-          {ZONE_OPTIONS.map((z) => {
-            const active = form.deliveryZone === z.value;
-            return (
-              <div
-                key={z.value}
-                onClick={() => onChange("deliveryZone", z.value)}
-                style={{
-                  flex: 1, padding: "14px 16px", borderRadius: 10, cursor: "pointer",
-                  border: `2px solid ${active ? "#1B3D6E" : "#e2e8f0"}`,
-                  background: active ? "#EEF2F8" : "#fff",
-                  transition: "all .15s",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <div style={{
-                    width: 18, height: 18, borderRadius: "50%",
-                    border: `2px solid ${active ? "#1B3D6E" : "#cbd5e1"}`,
-                    background: active ? "#1B3D6E" : "#fff",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    {active && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} />}
-                  </div>
-                  <span style={{ fontWeight: 700, fontSize: 13.5, color: active ? "#1B3D6E" : "#475569" }}>{z.label}</span>
-                </div>
-                <div style={{ fontSize: 11.5, color: "#94a3b8", marginLeft: 26 }}>{z.sub}</div>
-                {!settingsLoading && form.deliveryZone === z.value && (
-                  <div style={{ marginTop: 8, marginLeft: 26, fontSize: 12.5, fontWeight: 700, color: "#1B3D6E" }}>
-                    <i className="bi bi-truck me-1" />Delivery: {deliveryFee === 0 ? "Free" : money(deliveryFee)}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+      {/* Structured location picker */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div>
+          <label style={labelStyle}>Area Type <span style={{ color: "#ef4444" }}>*</span></label>
+          <select
+            style={inputStyle}
+            value={form.areaType}
+            onChange={(e) => onChange("areaType", e.target.value)}
+          >
+            <option value="">Select area type</option>
+            <option value="inside_valley">Inside Kathmandu Valley</option>
+            <option value="outside_valley">Outside Kathmandu Valley</option>
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>City / District <span style={{ color: "#ef4444" }}>*</span></label>
+          <select
+            style={inputStyle}
+            value={form.deliveryZoneId}
+            onChange={(e) => onChange("deliveryZoneId", e.target.value)}
+            disabled={!form.areaType}
+          >
+            <option value="">{form.areaType ? "Select city" : "Select area type first"}</option>
+            {availableCities.map((zone) => (
+              <option key={zone.id} value={zone.id}>
+                {zone.city}{zone.district ? `, ${zone.district}` : ""}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+
+      {form.deliveryZoneId && (
+        <div style={{ marginBottom: 20, padding: "12px 14px", borderRadius: 9, background: "#F0FDF4", color: "#15803d", fontSize: 13 }}>
+          <i className="bi bi-truck me-2" />
+          {settingsLoading
+            ? "Calculating delivery fee..."
+            : <>Delivery: <strong>{quote?.deliveryFee === 0 ? "Free" : money(quote?.deliveryFee)}</strong>
+              {quote?.amountUntilFreeDelivery > 0 && <>. Add {money(quote.amountUntilFreeDelivery)} more for free Valley delivery.</>}
+            </>
+          }
+        </div>
+      )}
 
       {/* Name & phone */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
@@ -335,16 +335,6 @@ function StepDelivery({ form, onChange, deliveryFee, settingsLoading, onBack, on
             placeholder="Near landmark"
           />
         </div>
-      </div>
-
-      {/* City & Notes */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={labelStyle}>City</label>
-        <input
-          style={{ ...inputStyle, background: "#f8fafc", color: "#94a3b8" }}
-          value="Kathmandu"
-          readOnly
-        />
       </div>
 
       <div style={{ marginBottom: 24 }}>
@@ -440,8 +430,8 @@ function StepConfirm({ form, selectedItems, deliveryFee, submitting, onBack, onC
             ["Address", form.addressLine],
             ["Area", form.area || "-"],
             ["Landmark", form.landmark || "-"],
-            ["City", "Kathmandu"],
-            ["Zone", form.deliveryZone === "inside" ? "Inside Ring Road" : "Outside Ring Road"],
+            ["City", form.city],
+            ["Zone", form.areaType === "inside_valley" ? "Inside Kathmandu Valley" : "Outside Kathmandu Valley"],
             ["Payment", "Cash on Delivery"],
           ].map(([k, v]) => (
             <div key={k}>
@@ -512,11 +502,14 @@ export default function Checkout() {
     area: "",
     landmark: "",
     notes: "",
-    deliveryZone: "",
+    areaType: "",
+    deliveryZoneId: "",
+    city: "",
   });
 
-  // Settings (delivery fees)
-  const [settings, setSettings] = useState(null);
+  // Delivery locations and live server quote
+  const [zones, setZones] = useState([]);
+  const [quote, setQuote] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
 
   // Session
@@ -551,28 +544,62 @@ export default function Checkout() {
     loadCart();
   }, [user, navigate]);
 
-  /* ── Load delivery settings ── */
+  /* ── Load supported delivery locations ── */
   useEffect(() => {
-    async function loadSettings() {
+    async function loadZones() {
       setSettingsLoading(true);
       try {
-        const res = await fetch(`${API}/settings/store`);
+        const res = await fetch(`${API}/delivery/zones`);
         const data = await res.json();
-        setSettings(data.settings);
-      } catch {
-        // silently fail — user will see "select zone" until fee shows
+        if (!res.ok) throw new Error(data.message || "Failed to load delivery cities");
+        setZones(data.items || []);
+      } catch (e) {
+        setError(e.message);
       } finally {
         setSettingsLoading(false);
       }
     }
-    loadSettings();
+    loadZones();
   }, []);
 
-  const deliveryFee = settings && form.deliveryZone
-    ? (form.deliveryZone === "inside" ? settings.deliveryFeeInside : settings.deliveryFeeOutside)
-    : 0;
-
   const selectedItems = cartItems.filter((it) => selected.has(it.id));
+  const selectedSubtotal = selectedItems.reduce((sum, it) => {
+    const price = it.variant ? it.variant.price : it.product.basePrice;
+    return sum + price * it.quantity;
+  }, 0);
+  const deliveryFee = quote?.deliveryFee ?? 0;
+
+  /* ── Refresh fee whenever location or selected items change ── */
+  useEffect(() => {
+    if (!form.deliveryZoneId) {
+      setQuote(null);
+      return;
+    }
+
+    async function loadQuote() {
+      setSettingsLoading(true);
+      try {
+        const res = await fetch(`${API}/delivery/quote`, {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({
+            deliveryZoneId: form.deliveryZoneId,
+            subtotal: selectedSubtotal,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to calculate delivery fee");
+        setQuote(data);
+      } catch (e) {
+        setQuote(null);
+        setError(e.message);
+      } finally {
+        setSettingsLoading(false);
+      }
+    }
+
+    loadQuote();
+  }, [form.deliveryZoneId, selectedSubtotal]);
 
   /* ── Handlers ── */
   function toggleItem(id) {
@@ -589,7 +616,16 @@ export default function Checkout() {
   }
 
   function handleFormChange(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      if (field === "areaType") {
+        return { ...prev, areaType: value, deliveryZoneId: "", city: "" };
+      }
+      if (field === "deliveryZoneId") {
+        const zone = zones.find((item) => item.id === value);
+        return { ...prev, deliveryZoneId: value, city: zone?.city || "" };
+      }
+      return { ...prev, [field]: value };
+    });
   }
 
   /* ── Step 1 → 2: create checkout session ── */
@@ -599,7 +635,7 @@ export default function Checkout() {
     try {
       const body = {
         cartItemIds: [...selected],
-        deliveryZone: form.deliveryZone || undefined,
+        deliveryZoneId: form.deliveryZoneId || undefined,
       };
       const res = await fetch(`${API}/checkout-sessions`, {
         method: "POST",
@@ -629,8 +665,7 @@ export default function Checkout() {
         addressLine: form.addressLine,
         area: form.area || undefined,
         landmark: form.landmark || undefined,
-        city: "Kathmandu",
-        deliveryZone: form.deliveryZone,
+        deliveryZoneId: form.deliveryZoneId,
         notes: form.notes || undefined,
       };
       const res = await fetch(`${API}/checkout-sessions/${sessionId}/confirm`, {
@@ -715,7 +750,8 @@ export default function Checkout() {
               <StepDelivery
                 form={form}
                 onChange={handleFormChange}
-                deliveryFee={deliveryFee}
+                zones={zones}
+                quote={quote}
                 settingsLoading={settingsLoading}
                 onBack={() => setStep(1)}
                 onNext={() => setStep(3)}
@@ -737,7 +773,7 @@ export default function Checkout() {
           <PriceSummary
             items={selectedItems}
             deliveryFee={deliveryFee}
-            deliveryZone={form.deliveryZone}
+            deliveryZoneId={form.deliveryZoneId}
             loading={settingsLoading}
           />
         </div>

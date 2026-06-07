@@ -1,129 +1,74 @@
-import { createContext, useContext, useMemo, useState, useEffect } from "react";
+import { createContext, useContext, useMemo, useState, useEffect, useCallback } from "react";
+import api from "../api/axios.js";
+import { getJSON, setJSON, removeItem } from "../utils/storage.js";
 
 const AuthContext = createContext(null);
 
-// ✅ helper: decode JWT payload (to check expiry)
 const parseJwt = (token) => {
   try {
     const base64Url = token.split(".")[1];
     const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-        .join("")
-    );
-    return JSON.parse(jsonPayload);
-  } catch {
-    return null;
-  }
+    return JSON.parse(decodeURIComponent(atob(base64).split("").map((c) =>
+      "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)
+    ).join("")));
+  } catch { return null; }
 };
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem("token") || "");
-  const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem("user");
-    return raw ? JSON.parse(raw) : null;
-  });
+  const [user, setUser] = useState(() => getJSON("user"));
 
   const isAuthenticated = !!token && !!user;
 
   const logout = () => {
     setToken("");
     setUser(null);
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    removeItem("token");
+    removeItem("user");
   };
 
-  // ✅ 1) Auto logout on first load if token already expired
+  const authFetch = useCallback((url, options = {}) => {
+    const headers = {
+      ...options.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    return fetch(url, { ...options, headers });
+  }, [token]);
+
+  // Auto-logout on token expiry at startup
   useEffect(() => {
-  if (!token) return;
+    if (!token) return;
+    const payload = parseJwt(token);
+    if (payload?.exp && payload.exp * 1000 <= Date.now()) logout();
+  }, []);   // intentionally run once on mount
 
-  const payload = parseJwt(token);
-  if (!payload?.exp) return;
-
-  const expired = payload.exp * 1000 <= Date.now();
-  if (expired) logout();
-}, [token]);
-
-  // ✅ 2) Wrapper fetch: if backend returns 401 -> logout immediately
-  const authFetch = async (url, options = {}) => {
-    const res = await fetch(url, options);
-
-    if (res.status === 401) {
-      // session invalid/expired
-      logout();
-      throw new Error("Session expired. Please login again.");
-    }
-
-    return res;
-  };
-
-  const register = async ({ name, email, phone, password }) => {
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, phone, password }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || "Registration failed");
-
+  const login = async ({ identifier, password }) => {
+    const { data } = await api.post("/auth/login", { identifier, password });
     const accessToken = data.accessToken || data.token;
     const u = data.user;
-
-    if (!accessToken || !u) throw new Error("Registration failed");
-
+    if (!accessToken || !u) throw new Error("Login failed");
     setToken(accessToken);
     setUser(u);
-
     localStorage.setItem("token", accessToken);
-    localStorage.setItem("user", JSON.stringify(u));
-
+    setJSON("user", u);
     return { token: accessToken, user: u };
   };
 
-  const login = async ({ identifier, password }) => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier, password }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || "Login failed");
-
+  const register = async ({ name, email, phone, password }) => {
+    const { data } = await api.post("/auth/register", { name, email, phone, password });
     const accessToken = data.accessToken || data.token;
     const u = data.user;
-
-    if (!accessToken || !u) throw new Error("Login failed");
-
+    if (!accessToken || !u) throw new Error("Registration failed");
     setToken(accessToken);
     setUser(u);
-
     localStorage.setItem("token", accessToken);
-    localStorage.setItem("user", JSON.stringify(u));
-
+    setJSON("user", u);
     return { token: accessToken, user: u };
   };
 
   const value = useMemo(
-    () => ({
-      token,
-      user,
-      isAuthenticated,
-      login,
-      register,
-      logout,
-
-      // expose setters
-      setUser,
-      setToken,
-
-      // ✅ expose authFetch so pages can use it
-      authFetch,
-    }),
-    [token, user, isAuthenticated]
+    () => ({ token, user, isAuthenticated, login, register, logout, setUser, setToken, authFetch }),
+    [token, user, isAuthenticated, authFetch]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,5 +1,10 @@
 import { Link } from "react-router-dom";
 import { useRef, useState, useEffect, useMemo } from "react";
+import { getPublicTrendingProducts } from "../../api/trendingProducts";
+import { resolveAssetUrl } from "../../utils/assetUrl";
+
+
+
 
 /* ─── API BASE ─── */
 const API_BASE =
@@ -16,33 +21,6 @@ async function fetchHeroSlides() {
   return res.json();
 }
 
-/* keep product demo sections for now */
-const trending = [
-  { id: 1, name: "SPF 50+ Daily Sunscreen", brand: "Minimalist", price: 1199, oldPrice: 1499, off: 20, tag: "Best seller", rating: 4.8, reviews: 2341 },
-  { id: 2, name: "Ceramide Barrier Cream", brand: "CeraVe", price: 1899, oldPrice: 2299, off: 17, tag: "Skin barrier", rating: 4.9, reviews: 1820 },
-  { id: 3, name: "Niacinamide 10% Serum", brand: "The Ordinary", price: 1399, oldPrice: 1699, off: 18, tag: "Oil control", rating: 4.7, reviews: 3102 },
-  { id: 4, name: "Hyaluronic Acid Serum", brand: "Neutrogena", price: 1599, oldPrice: 1999, off: 20, tag: "Hydration", rating: 4.6, reviews: 987 },
-  { id: 5, name: "Vitamin C Brightening", brand: "Mamaearth", price: 849, oldPrice: 999, off: 15, tag: "Glow booster", rating: 4.5, reviews: 1456 },
-  { id: 6, name: "Retinol Night Cream", brand: "Olay", price: 1299, oldPrice: 1599, off: 19, tag: "Anti-aging", rating: 4.7, reviews: 762 },
-];
-
-const bestSellers = [
-  { id: 7, name: "Gentle Foaming Cleanser", brand: "La Roche-Posay", price: 999, oldPrice: 1199, off: 17, tag: "Daily wash", rating: 4.8, reviews: 4201 },
-  { id: 8, name: "Multivitamin Gummies", brand: "Vitafusion", price: 799, oldPrice: 999, off: 20, tag: "Daily health", rating: 4.6, reviews: 2890 },
-  { id: 9, name: "Calamine Soothing Lotion", brand: "Lacto-Calamine", price: 199, oldPrice: 249, off: 20, tag: "Soothing", rating: 4.5, reviews: 5670 },
-  { id: 10, name: "Micellar Cleansing Water", brand: "Bioderma", price: 699, oldPrice: 849, off: 18, tag: "Makeup remover", rating: 4.9, reviews: 3344 },
-  { id: 11, name: "After Sun Gel", brand: "Banana Boat", price: 449, oldPrice: 549, off: 18, tag: "Sun relief", rating: 4.4, reviews: 891 },
-  { id: 12, name: "Hand Cream Intensive", brand: "Neutrogena", price: 349, oldPrice: 449, off: 22, tag: "Repair", rating: 4.7, reviews: 2100 },
-];
-
-const newArrivals = [
-  { id: 13, name: "Peptide Lifting Serum", brand: "COSRX", price: 2199, oldPrice: 2599, off: 15, tag: "New", rating: 4.8, reviews: 120 },
-  { id: 14, name: "Bakuchiol Retinol Alt.", brand: "Youth to the People", price: 3299, oldPrice: 3799, off: 13, tag: "New", rating: 4.6, reviews: 87 },
-  { id: 15, name: "Probiotic Toner", brand: "Good Molecules", price: 1099, oldPrice: 1299, off: 15, tag: "New", rating: 4.7, reviews: 203 },
-  { id: 16, name: "Blue Light Defense SPF", brand: "Supergoop!", price: 2499, oldPrice: 2899, off: 14, tag: "New", rating: 4.9, reviews: 65 },
-  { id: 17, name: "Scalp Serum Treatment", brand: "The INKEY List", price: 1799, oldPrice: 2099, off: 14, tag: "New", rating: 4.5, reviews: 178 },
-  { id: 18, name: "Collagen Booster Drops", brand: "Klairs", price: 1999, oldPrice: 2399, off: 17, tag: "New", rating: 4.8, reviews: 92 },
-];
 
 const bundles = [
   {
@@ -113,6 +91,42 @@ async function fetchCategories() {
   return res.json();
 }
 
+async function fetchBestSellers() {
+  const res = await fetch(`${API_BASE}/products/best-sellers?limit=6`);
+  if (!res.ok) throw new Error("Failed to fetch best sellers");
+  return res.json();
+}
+
+async function fetchNewArrivals() {
+  const res = await fetch(`${API_BASE}/products?status=active&limit=8&page=1`);
+  if (!res.ok) throw new Error("Failed to fetch new arrivals");
+  return res.json();
+}
+
+function shapeProduct(product) {
+  return {
+    ...product,
+    brand: product.brand?.name || "",
+    price: product.basePrice || 0,
+    oldPrice: null,
+    off: null,
+    rating: 4.8,
+    reviews: 0,
+    image: resolveAssetUrl(product.images?.[0]?.url),
+  };
+}
+/* export async function getPublicTrendingProducts() {
+  const res = await fetch("/api/trending-products");
+
+  if (!res.ok) {
+    throw new Error("Failed to fetch trending products");
+  }
+
+  return res.json();
+} */
+
+
+
 function getCategoryIcon(slug = "", name = "") {
   const key = `${slug} ${name}`.toLowerCase();
 
@@ -163,9 +177,8 @@ function ProductCard({ p, onAddCart }) {
 
   return (
     <Link
-      to={`/products/${p.id}`}
-      className="text-decoration-none"
-      style={{ display: "block", width: 210, flexShrink: 0 }}
+      to={`/products/${p.slug || p.id}`}
+      className="text-decoration-none product-card-link"
     >
       <div className="product-card">
         <div className="product-img-wrap">
@@ -178,20 +191,43 @@ function ProductCard({ p, onAddCart }) {
           >
             <i className="bi bi-heart" />
           </button>
-          <div className="product-img-ph" />
+
+          {p.image ? (
+            <img
+              src={p.image}
+              alt={p.name}
+              loading="lazy"
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
+            />
+          ) : (
+            <div className="product-img-ph" />
+          )}
         </div>
+
         <div className="product-body">
-          <div className="product-brand">{p.brand}</div>
+          <div className="product-brand">{p.brand || "Medisuite"}</div>
           <div className="product-name">{p.name}</div>
           <div className="product-meta">
-            <Stars rating={p.rating} />
-            <span className="review-count">({p.reviews.toLocaleString()})</span>
+            <Stars rating={p.rating || 4.8} />
+            <span className="review-count">
+              ({(p.reviews || 0).toLocaleString()})
+            </span>
           </div>
           <div className="product-price-row">
-            <span className="product-price">NPR {p.price.toLocaleString()}</span>
-            <span className="product-old">NPR {p.oldPrice.toLocaleString()}</span>
+            <span className="product-price">
+              NPR {(p.price || 0).toLocaleString()}
+            </span>
+            {p.oldPrice ? (
+              <span className="product-old">
+                NPR {p.oldPrice.toLocaleString()}
+              </span>
+            ) : null}
           </div>
-          <button className={`add-btn ${added ? "added" : ""}`} onClick={handleAdd} type="button">
+          <button
+            className={`add-btn ${added ? "added" : ""}`}
+            onClick={handleAdd}
+            type="button"
+          >
             {added ? (
               <>
                 <i className="bi bi-check2" /> Added
@@ -392,7 +428,7 @@ export function Hero() {
               {/* If slide is linked to a real product with an image, show it */}
               {s.product?.images?.[0]?.url ? (
                 <img
-                  src={s.product.images[0].url}
+                  src={resolveAssetUrl(s.product.images[0].url)}
                   alt={s.featName}
                   style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 12 }}
                 />
@@ -485,6 +521,16 @@ export default function Home() {
   const [catLoading, setCatLoading] = useState(true);
   const [catError, setCatError] = useState("");
 
+  const [trending, setTrending] = useState([]);
+  const [trendingLoading, setTrendingLoading] = useState(true);
+  const [trendingError, setTrendingError] = useState("");
+  const [bestSellers, setBestSellers] = useState([]);
+  const [bestSellersLoading, setBestSellersLoading] = useState(true);
+  const [bestSellersError, setBestSellersError] = useState("");
+  const [newArrivals, setNewArrivals] = useState([]);
+  const [newArrivalsLoading, setNewArrivalsLoading] = useState(true);
+  const [newArrivalsError, setNewArrivalsError] = useState("");
+
   useEffect(() => {
     let ignore = false;
 
@@ -513,6 +559,76 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadTrending() {
+      try {
+        setTrendingLoading(true);
+        setTrendingError("");
+
+        const data = await getPublicTrendingProducts();
+
+        if (ignore) return;
+
+        const raw = Array.isArray(data?.products) ? data.products : [];
+        const shaped = raw.map(shapeProduct);
+        setTrending(shaped);
+      } catch (err) {
+        if (ignore) return;
+        setTrendingError(err.message || "Failed to load trending products");
+      } finally {
+        if (!ignore) setTrendingLoading(false);
+      }
+    }
+
+    loadTrending();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadNewArrivals() {
+      try {
+        setNewArrivalsLoading(true);
+        setNewArrivalsError("");
+        const data = await fetchNewArrivals();
+        if (!ignore) setNewArrivals((data.items || []).map(shapeProduct));
+      } catch (err) {
+        if (!ignore) setNewArrivalsError(err.message || "Failed to load new arrivals");
+      } finally {
+        if (!ignore) setNewArrivalsLoading(false);
+      }
+    }
+
+    loadNewArrivals();
+    return () => { ignore = true; };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadBestSellers() {
+      try {
+        setBestSellersLoading(true);
+        setBestSellersError("");
+        const data = await fetchBestSellers();
+        if (!ignore) setBestSellers((data.items || []).map(shapeProduct));
+      } catch (err) {
+        if (!ignore) setBestSellersError(err.message || "Failed to load best sellers");
+      } finally {
+        if (!ignore) setBestSellersLoading(false);
+      }
+    }
+
+    loadBestSellers();
+    return () => { ignore = true; };
+  }, []);
+
   const displayCategories = useMemo(() => {
     return categories
       .filter((c) => c.status === "active" && !c.parent)
@@ -529,7 +645,8 @@ export default function Home() {
               ? `${c.children.length} subcategories`
               : "Explore category",
         };
-      });
+      })
+      .slice(0, 12);
   }, [categories]);
 
   return (
@@ -541,11 +658,15 @@ export default function Home() {
 
       {/* CATEGORIES */}
       <section className="section container">
-        <SecHead title="Shop by category" sub="Find what your skin, body & family needs." href="/products" />
+        <SecHead
+          title="Shop by category"
+          sub="Find what your skin, body & family needs."
+          href="/products"
+        />
 
         {catLoading ? (
           <div className="cat-grid">
-            {Array.from({ length: 8 }).map((_, i) => (
+            {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="cat-card cat-skeleton">
                 <div className="cat-icon-wrap skeleton-box" />
                 <div className="skeleton-line skeleton-line-lg" />
@@ -565,7 +686,10 @@ export default function Home() {
           <div className="cat-grid">
             {displayCategories.map((c) => (
               <Link key={c.id} to={c.href} className="text-decoration-none">
-                <div className="cat-card" style={{ "--cat-color": c.color, "--cat-bg": c.bg }}>
+                <div
+                  className="cat-card"
+                  style={{ "--cat-color": c.color, "--cat-bg": c.bg }}
+                >
                   <div className="cat-icon-wrap">
                     <i className={`bi ${c.icon} cat-icon`} />
                   </div>
@@ -581,24 +705,55 @@ export default function Home() {
       {/* TRENDING */}
       <section className="section section-alt">
         <div className="container">
-          <SecHead title="Trending now" sub="What everyone's adding to cart this week." href="/products" />
-          <ScrollRow items={trending} renderItem={(p) => <ProductCard key={p.id} p={p} />} />
+          <SecHead
+            title="Trending now"
+            sub="What everyone's adding to cart this week."
+            href="/products"
+          />
+
+          {trendingLoading ? (
+            <div className="home-alert-empty">Loading trending products...</div>
+          ) : trendingError ? (
+            <div className="home-alert-error">{trendingError}</div>
+          ) : trending.length === 0 ? (
+            <div className="home-alert-empty">No trending products found.</div>
+          ) : (
+            <ScrollRow
+              items={trending}
+              renderItem={(p) => <ProductCard key={p.id} p={p} />}
+            />
+          )}
         </div>
       </section>
 
       {/* BUNDLES */}
       <section className="section bundles-section">
         <div className="container">
-          <SecHead title="Curated bundles" sub="Better together — save more with expert-curated kits." href="/products" action="See all bundles" />
+          <SecHead
+            title="Curated bundles"
+            sub="Better together — save more with expert-curated kits."
+            href="/products"
+            action="See all bundles"
+          />
           <div className="bundle-grid">
             {bundles.map((b) => (
               <Link key={b.id} to="/products" className="text-decoration-none">
                 <div className="bundle-card" style={{ background: b.bg }}>
                   <div className="bundle-top">
-                    <div className="bundle-icon-wrap" style={{ background: `${b.color}18`, color: b.color }}>
+                    <div
+                      className="bundle-icon-wrap"
+                      style={{ background: `${b.color}18`, color: b.color }}
+                    >
                       <i className={`bi ${b.icon}`} />
                     </div>
-                    <span className="bundle-save" style={{ color: b.color, background: `${b.color}15`, border: `1px solid ${b.color}25` }}>
+                    <span
+                      className="bundle-save"
+                      style={{
+                        color: b.color,
+                        background: `${b.color}15`,
+                        border: `1px solid ${b.color}25`,
+                      }}
+                    >
                       Save {b.off}%
                     </span>
                   </div>
@@ -609,8 +764,12 @@ export default function Home() {
                     {b.items} products included
                   </div>
                   <div className="bundle-price-row">
-                    <span className="bundle-price">NPR {b.price.toLocaleString()}</span>
-                    <span className="bundle-old">NPR {b.oldPrice.toLocaleString()}</span>
+                    <span className="bundle-price">
+                      NPR {b.price.toLocaleString()}
+                    </span>
+                    <span className="bundle-old">
+                      NPR {b.oldPrice.toLocaleString()}
+                    </span>
                   </div>
                   <div className="bundle-cta" style={{ background: b.color }}>
                     Shop bundle <i className="bi bi-arrow-right ms-1" />
@@ -624,14 +783,33 @@ export default function Home() {
 
       {/* BEST SELLERS */}
       <section className="section container">
-        <SecHead title="Best sellers" sub="Tried, trusted, and loved by thousands." href="/products" />
-        <ScrollRow items={bestSellers} renderItem={(p) => <ProductCard key={p.id} p={p} />} />
+        <SecHead
+          title="Best sellers"
+          sub="Tried, trusted, and loved by thousands."
+          href="/products"
+        />
+        {bestSellersLoading ? (
+          <div className="home-alert-empty">Loading best sellers...</div>
+        ) : bestSellersError ? (
+          <div className="home-alert-error">{bestSellersError}</div>
+        ) : bestSellers.length === 0 ? (
+          <div className="home-alert-empty">No best sellers found.</div>
+        ) : (
+          <ScrollRow
+            items={bestSellers}
+            renderItem={(p) => <ProductCard key={p.id} p={p} />}
+          />
+        )}
       </section>
 
       {/* HEALTH CONCERNS */}
       <section className="section concern-section">
         <div className="container">
-          <SecHead title="Shop by health concern" sub="Find the right products for your specific needs." href="/products" />
+          <SecHead
+            title="Shop by health concern"
+            sub="Find the right products for your specific needs."
+            href="/products"
+          />
           <div className="concern-grid">
             {healthConcerns.map((c) => (
               <Link key={c.title} to={c.href} className="text-decoration-none">
@@ -654,8 +832,23 @@ export default function Home() {
       {/* NEW ARRIVALS */}
       <section className="section section-alt">
         <div className="container">
-          <SecHead title="New arrivals" sub="Fresh formulas and innovations just landed." href="/products" />
-          <ScrollRow items={newArrivals} renderItem={(p) => <ProductCard key={p.id} p={p} />} />
+          <SecHead
+            title="New arrivals"
+            sub="Fresh formulas and innovations just landed."
+            href="/products"
+          />
+          {newArrivalsLoading ? (
+            <div className="home-alert-empty">Loading new arrivals...</div>
+          ) : newArrivalsError ? (
+            <div className="home-alert-error">{newArrivalsError}</div>
+          ) : newArrivals.length === 0 ? (
+            <div className="home-alert-empty">No new arrivals found.</div>
+          ) : (
+            <ScrollRow
+              items={newArrivals}
+              renderItem={(p) => <ProductCard key={p.id} p={p} />}
+            />
+          )}
         </div>
       </section>
 
@@ -674,14 +867,32 @@ export default function Home() {
                 count on.
               </h2>
               <p className="trust-body">
-                Every product is verified, every brand is trusted. We bring you clean, effective wellness without compromise — delivered right to your door.
+                Every product is verified, every brand is trusted. We bring you
+                clean, effective wellness without compromise — delivered right to
+                your door.
               </p>
               <div className="trust-feats">
                 {[
-                  { icon: "bi-shield-fill-check", title: "Genuine products", sub: "Verified directly from brands" },
-                  { icon: "bi-truck", title: "Fast COD delivery", sub: "Ring road & beyond" },
-                  { icon: "bi-arrow-counterclockwise", title: "Easy returns", sub: "Hassle-free policy" },
-                  { icon: "bi-headset", title: "Expert support", sub: "Chat or call anytime" },
+                  {
+                    icon: "bi-shield-fill-check",
+                    title: "Genuine products",
+                    sub: "Verified directly from brands",
+                  },
+                  {
+                    icon: "bi-truck",
+                    title: "Fast COD delivery",
+                    sub: "Ring road & beyond",
+                  },
+                  {
+                    icon: "bi-arrow-counterclockwise",
+                    title: "Easy returns",
+                    sub: "Hassle-free policy",
+                  },
+                  {
+                    icon: "bi-headset",
+                    title: "Expert support",
+                    sub: "Chat or call anytime",
+                  },
                 ].map((f) => (
                   <div key={f.title} className="trust-feat">
                     <div className="trust-feat-icon">
@@ -705,13 +916,25 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="nl-tag">Stay in the know</div>
-                <div className="nl-title">Offers, routines &amp; wellness tips</div>
-                <div className="nl-sub">Weekly drops, zero spam. Unsubscribe anytime.</div>
-                <div className="nl-input-row">
-                  <input className="nl-input" type="email" placeholder="your@email.com" />
-                  <button className="nl-btn" type="button">Subscribe</button>
+                <div className="nl-title">
+                  Offers, routines &amp; wellness tips
                 </div>
-                <div className="nl-fine">By subscribing, you agree to our privacy policy.</div>
+                <div className="nl-sub">
+                  Weekly drops, zero spam. Unsubscribe anytime.
+                </div>
+                <div className="nl-input-row">
+                  <input
+                    className="nl-input"
+                    type="email"
+                    placeholder="your@email.com"
+                  />
+                  <button className="nl-btn" type="button">
+                    Subscribe
+                  </button>
+                </div>
+                <div className="nl-fine">
+                  By subscribing, you agree to our privacy policy.
+                </div>
                 <div className="nl-stats">
                   {[
                     ["2k+", "Customers"],
@@ -757,7 +980,11 @@ const CSS = `
 .home-root {
   font-family: 'Plus Jakarta Sans', sans-serif;
   color: var(--text-main);
-  background: var(--off-white);
+  background:
+    radial-gradient(circle at 8% 4%, rgba(107,191,78,.08), transparent 24rem),
+    radial-gradient(circle at 92% 18%, rgba(27,61,110,.07), transparent 26rem),
+    #f8fbfd;
+  overflow: hidden;
 }
 
 .home-alert-error,
@@ -819,9 +1046,9 @@ const CSS = `
 
 /* ── TRUST BAR ── */
 .trust-bar {
-  background: var(--navy);
-  padding: 10px 0;
-  border-bottom: 2px solid var(--green);
+  background: linear-gradient(90deg, #102f59, #1b4b79 52%, #13375f);
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(107,191,78,.65);
 }
 .trust-bar-inner {
   display: flex;
@@ -847,9 +1074,23 @@ const CSS = `
 /* ── HERO ── */
 .hero {
   position: relative;
-  padding: 60px 0 52px;
+  padding: 82px 0 70px;
   overflow: hidden;
   transition: background 0.7s ease;
+  isolation: isolate;
+  border-bottom: 1px solid rgba(27,61,110,.07);
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  right: 4%;
+  top: 4%;
+  border: 1px solid rgba(27,61,110,.08);
+  border-radius: 50%;
+  box-shadow: 0 0 0 70px rgba(107,191,78,.035), 0 0 0 140px rgba(27,61,110,.025);
+  z-index: -1;
 }
 .hero-geo {
   position: absolute;
@@ -866,8 +1107,8 @@ const CSS = `
 }
 .hero-inner {
   display: grid;
-  grid-template-columns: 1fr 420px;
-  gap: 56px;
+  grid-template-columns: minmax(0, 1.1fr) 440px;
+  gap: 72px;
   align-items: center;
   position: relative;
   z-index: 1;
@@ -893,9 +1134,9 @@ const CSS = `
 }
 .hero-h1 {
   font-family: 'Lora', serif;
-  font-size: clamp(38px, 5vw, 60px);
+  font-size: clamp(46px, 5.4vw, 70px);
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.04;
   letter-spacing: -0.025em;
   margin: 0 0 18px;
   color: var(--navy);
@@ -904,12 +1145,12 @@ const CSS = `
   color: var(--green-dark);
 }
 .hero-sub {
-  font-size: 16.5px;
+  font-size: 17px;
   color: var(--text-mid);
   line-height: 1.65;
   margin: 0 0 20px;
   font-weight: 400;
-  max-width: 440px;
+  max-width: 540px;
 }
 .hero-offer {
   display: inline-flex;
@@ -983,15 +1224,18 @@ const CSS = `
   position: relative;
 }
 .hero-card {
-  background: var(--white);
-  border-radius: 20px;
-  border: 1.5px solid var(--border);
+  background: rgba(255,255,255,.9);
+  border-radius: 26px;
+  border: 1px solid rgba(255,255,255,.82);
   overflow: hidden;
-  box-shadow: 0 16px 48px rgba(27,61,110,.12);
+  box-shadow: 0 28px 70px rgba(27,61,110,.18);
+  backdrop-filter: blur(18px);
+  transform: rotate(1deg);
 }
 .hero-card-img {
   position: relative;
-  height: 190px;
+  height: 230px;
+  background: linear-gradient(145deg, #eef5eb, #edf3f8);
 }
 .hero-card-img-bg {
   width: 100%;
@@ -1108,18 +1352,23 @@ const CSS = `
   background: var(--navy);
 }
 
-.section { padding: 60px 0; }
-.section-alt { background: var(--navy-xlight); }
+.section { padding: 82px 0; position: relative; }
+.section-alt {
+  background:
+    radial-gradient(circle at 0 50%, rgba(107,191,78,.08), transparent 28rem),
+    linear-gradient(180deg, #f2f7fc 0%, #edf4fa 100%);
+  border-block: 1px solid rgba(27,61,110,.06);
+}
 .sec-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: 30px;
+  margin-bottom: 34px;
   gap: 16px;
 }
 .sec-title {
   font-family: 'Lora', serif;
-  font-size: clamp(22px, 3vw, 30px);
+  font-size: clamp(28px, 3vw, 38px);
   font-weight: 700;
   margin: 0 0 4px;
   letter-spacing: -0.025em;
@@ -1144,26 +1393,28 @@ const CSS = `
 
 .cat-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
 }
 .cat-card {
-  background: var(--cat-bg);
-  border-radius: 16px;
-  padding: 22px 10px 18px;
+  background: linear-gradient(145deg, #fff, var(--cat-bg));
+  border-radius: 20px;
+  padding: 24px 14px 22px;
   text-align: center;
   cursor: pointer;
   transition: transform .2s, box-shadow .2s, border-color .2s;
-  border: 1.5px solid transparent;
+  border: 1px solid rgba(27,61,110,.08);
+  min-height: 152px;
+  box-shadow: 0 10px 28px rgba(27,61,110,.055);
 }
 .cat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 28px rgba(27,61,110,.1);
+  transform: translateY(-7px);
+  box-shadow: 0 20px 42px rgba(27,61,110,.13);
   border-color: var(--cat-color);
 }
 .cat-icon-wrap {
-  width: 52px; height: 52px;
-  border-radius: 14px;
+  width: 58px; height: 58px;
+  border-radius: 18px;
   background: rgba(255,255,255,.85);
   display: flex;
   align-items: center;
@@ -1171,18 +1422,18 @@ const CSS = `
   margin: 0 auto 11px;
   box-shadow: 0 2px 8px rgba(0,0,0,.06);
 }
-.cat-icon { font-size: 22px; color: var(--cat-color); }
-.cat-title { font-size: 12.5px; font-weight: 700; color: var(--text-main); margin-bottom: 3px; }
+.cat-icon { font-size: 24px; color: var(--cat-color); }
+.cat-title { font-size: 13.5px; font-weight: 800; color: var(--text-main); margin-bottom: 4px; }
 .cat-count { font-size: 10.5px; color: var(--text-muted); }
 
 .scroll-row-wrap { position: relative; }
 .scroll-row {
   display: flex;
-  gap: 14px;
+  gap: 20px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
-  padding: 4px 2px 16px;
+  padding: 8px 4px 24px;
 }
 .scroll-row::-webkit-scrollbar { display: none; }
 .scroll-btn {
@@ -1209,20 +1460,34 @@ const CSS = `
 
 .product-card {
   background: var(--white);
-  border-radius: 16px;
+  border-radius: 22px;
   overflow: hidden;
-  border: 1.5px solid var(--border);
+  border: 1px solid rgba(27,61,110,.1);
   transition: transform .2s, box-shadow .2s;
   scroll-snap-align: start;
   flex-shrink: 0;
-  width: 210px;
+  width: 236px;
+  box-shadow: 0 12px 32px rgba(27,61,110,.07);
+}
+.product-card-link {
+  display: block;
+  width: 236px;
+  flex-shrink: 0;
 }
 .product-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 14px 36px rgba(27,61,110,.11);
+  transform: translateY(-8px);
+  box-shadow: 0 24px 50px rgba(27,61,110,.15);
   border-color: #C4D8EE;
 }
-.product-img-wrap { position: relative; height: 165px; }
+.product-img-wrap {
+  position: relative;
+  height: 205px;
+  padding: 14px;
+  background: linear-gradient(145deg, #f1f7ed, #edf3f8);
+  overflow: hidden;
+}
+.product-img-wrap img { transition: transform .35s ease; }
+.product-card:hover .product-img-wrap img { transform: scale(1.06); }
 .product-img-ph {
   width: 100%; height: 100%;
   background: linear-gradient(135deg, var(--navy-light), var(--green-light));
@@ -1253,18 +1518,18 @@ const CSS = `
   transition: color .2s, border-color .2s, background .2s;
 }
 .wish-btn:hover { color: #E63946; border-color: #E63946; background: #FFF0F1; }
-.product-body { padding: 14px 14px 16px; }
+.product-body { padding: 18px 18px 20px; }
 .product-brand { font-size: 10.5px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
-.product-name { font-size: 13.5px; font-weight: 600; color: var(--text-main); line-height: 1.4; min-height: 38px; margin-bottom: 6px; }
+.product-name { font-size: 14.5px; font-weight: 700; color: var(--text-main); line-height: 1.45; min-height: 42px; margin-bottom: 8px; }
 .product-meta { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
 .review-count { font-size: 11px; color: var(--text-muted); }
 .product-price-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.product-price { font-size: 16px; font-weight: 800; color: var(--navy); }
+.product-price { font-size: 18px; font-weight: 800; color: var(--navy); }
 .product-old { font-size: 12px; color: var(--text-muted); text-decoration: line-through; }
 .add-btn {
   width: 100%;
-  padding: 9px;
-  border-radius: 8px;
+  padding: 11px;
+  border-radius: 11px;
   background: var(--navy);
   color: #fff;
   font-size: 13px;
@@ -1279,21 +1544,26 @@ const CSS = `
 .add-btn.added { background: var(--green-dark); }
 .add-btn:active { transform: scale(.97); }
 
-.bundles-section { background: var(--navy-light); }
+.bundles-section {
+  background:
+    radial-gradient(circle at 90% 10%, rgba(107,191,78,.16), transparent 26rem),
+    linear-gradient(135deg, #edf3fb 0%, #e8f3e5 100%);
+}
 .bundle-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
 .bundle-card {
-  border-radius: 20px;
-  padding: 24px;
+  border-radius: 24px;
+  padding: 28px;
   cursor: pointer;
   transition: transform .2s, box-shadow .2s;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  border: 1.5px solid rgba(27,61,110,.08);
+  border: 1px solid rgba(27,61,110,.09);
+  box-shadow: 0 14px 34px rgba(27,61,110,.07);
 }
 .bundle-card:hover {
   transform: translateY(-5px);
@@ -1351,8 +1621,8 @@ const CSS = `
   gap: 14px;
   background: var(--off-white);
   border: 1.5px solid var(--border);
-  border-radius: 14px;
-  padding: 18px 20px;
+  border-radius: 18px;
+  padding: 22px 24px;
   cursor: pointer;
   transition: border-color .2s, box-shadow .2s, transform .2s;
 }
@@ -1433,10 +1703,10 @@ const CSS = `
 .trust-feat-sub { font-size: 12px; color: rgba(255,255,255,.5); }
 
 .newsletter-card {
-  background: rgba(255,255,255,.06);
+  background: linear-gradient(145deg, rgba(255,255,255,.11), rgba(255,255,255,.045));
   border: 1.5px solid rgba(255,255,255,.12);
-  border-radius: 24px;
-  padding: 36px;
+  border-radius: 28px;
+  padding: 42px;
   backdrop-filter: blur(8px);
 }
 .nl-icon-row { margin-bottom: 20px; }
@@ -1521,7 +1791,12 @@ const CSS = `
   .hero-inner { grid-template-columns: 1fr; gap: 32px; }
   .hero-visual { display: none; }
   .hero { padding: 40px 0 36px; }
-  .cat-grid { grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .section { padding: 58px 0; }
+  .cat-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .cat-card { min-height: 138px; }
+  .product-card { width: 210px; }
+  .product-card-link { width: 210px; }
+  .product-img-wrap { height: 180px; }
   .bundle-grid { grid-template-columns: 1fr; }
   .concern-grid { grid-template-columns: 1fr; }
   .trust-grid { grid-template-columns: 1fr; gap: 40px; padding: 40px 0; }
@@ -1530,11 +1805,11 @@ const CSS = `
   .trust-bar-inner { gap: 16px; }
 }
 @media (max-width: 480px) {
-  .cat-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .cat-card { padding: 14px 6px; }
-  .cat-icon-wrap { width: 40px; height: 40px; }
+  .cat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .cat-card { padding: 18px 8px; min-height: 128px; }
+  .cat-icon-wrap { width: 46px; height: 46px; }
   .cat-icon { font-size: 18px; }
   .cat-title { font-size: 11px; }
-  .hero-h1 { font-size: 32px; }
+  .hero-h1 { font-size: 39px; }
 }
 `;

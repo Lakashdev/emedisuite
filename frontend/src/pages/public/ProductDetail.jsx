@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { notifyCartUpdated } from "../../utils/cartEvents";
 
 const API_BASE = "/api";
 
@@ -165,6 +166,7 @@ export default function ProductDetail() {
   }
   function setGuestCart(items) {
     localStorage.setItem("guest_cart", JSON.stringify(items));
+    notifyCartUpdated();
   }
   function addToGuestCart({ productId, variantId, qty }) {
     const cart = getGuestCart();
@@ -207,6 +209,7 @@ export default function ProductDetail() {
       });
 
       const warning = data?.warning;
+      notifyCartUpdated();
       setToast({
         msg: warning ? `Added to cart — ${warning}` : "Added to cart.",
         type: warning ? "warning" : "success",

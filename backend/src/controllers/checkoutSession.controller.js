@@ -1,24 +1,11 @@
 import { prisma } from "../config/prisma.js";
 import { sendOrderEmails } from "../utils/orderEmail.js";
+import { getDeliveryQuote } from "../services/delivery.service.js";
 
 const SESSION_TTL_MINUTES = 30;
 
 function isExpired(expiresAt) {
   return new Date(expiresAt).getTime() <= Date.now();
-}
-
-async function getSettings(tx) {
-  const existing = await tx.storeSettings.findFirst();
-  if (existing) return existing;
-
-  return tx.storeSettings.create({
-    data: { deliveryFeeInside: 0, deliveryFeeOutside: 0 },
-  });
-}
-
-function computeDeliveryFee(settings, deliveryZone) {
-  if (!deliveryZone) return 0;
-  return deliveryZone === "inside" ? settings.deliveryFeeInside : settings.deliveryFeeOutside;
 }
 
 async function getAvailableStock(tx, productId, variantId) {
@@ -42,15 +29,11 @@ async function getAvailableStock(tx, productId, variantId) {
 
 export const createCheckoutSession = async (req, res) => {
   const userId = req.user.id;
-  const { cartItemIds, deliveryZone } = req.body;
+  const { cartItemIds, deliveryZoneId } = req.body;
 
   if (!Array.isArray(cartItemIds) || cartItemIds.length === 0) {
     return res.status(400).json({ message: "cartItemIds must be a non-empty array" });
   }
-  if (deliveryZone && !["inside", "outside"].includes(deliveryZone)) {
-    return res.status(400).json({ message: "deliveryZone must be inside or outside" });
-  }
-
   try {
     const session = await prisma.$transaction(async (tx) => {
       const cart = await tx.cart.findUnique({
@@ -93,7 +76,7 @@ export const createCheckoutSession = async (req, res) => {
         data: {
           userId,
           status: "active",
-          deliveryZone: deliveryZone || null,
+          deliveryZoneId: deliveryZoneId || null,
           expiresAt,
           items: {
             create: selected.map((it) => ({
@@ -153,14 +136,15 @@ export const getCheckoutSession = async (req, res) => {
   }
 
   // compute totals preview
-  const settings = await prisma.storeSettings.findFirst();
-  const deliveryFee = settings ? computeDeliveryFee(settings, session.deliveryZone) : 0;
-
   let subtotal = 0;
   for (const it of session.items) {
     const unitPrice = it.variantId ? (it.variant?.price ?? 0) : (it.product?.basePrice ?? 0);
     subtotal += unitPrice * it.quantity;
   }
+  const quote = session.deliveryZoneId
+    ? await getDeliveryQuote(prisma, session.deliveryZoneId, subtotal)
+    : null;
+  const deliveryFee = quote?.deliveryFee ?? 0;
   const discountTotal = 0;
   const total = subtotal - discountTotal + deliveryFee;
 
@@ -206,15 +190,12 @@ export const confirmCheckoutSession = async (req, res) => {
     area,
     landmark,
     city,
-    deliveryZone, // inside | outside
+    deliveryZoneId,
     notes,
   } = req.body;
 
-  if (!fullName || !phone || !addressLine || !deliveryZone) {
-    return res.status(400).json({ message: "fullName, phone, addressLine, deliveryZone are required" });
-  }
-  if (!["inside", "outside"].includes(deliveryZone)) {
-    return res.status(400).json({ message: "deliveryZone must be inside or outside" });
+  if (!fullName || !phone || !addressLine || !deliveryZoneId) {
+    return res.status(400).json({ message: "fullName, phone, addressLine, deliveryZoneId are required" });
   }
 
   try {
@@ -281,8 +262,8 @@ export const confirmCheckoutSession = async (req, res) => {
         }
       }
 
-      const settings = await getSettings(tx);
-      const deliveryFee = computeDeliveryFee(settings, deliveryZone);
+      const quote = await getDeliveryQuote(tx, deliveryZoneId, subtotal);
+      const deliveryFee = quote.deliveryFee;
       const discountTotal = 0;
       const total = subtotal - discountTotal + deliveryFee;
 
@@ -304,8 +285,11 @@ export const confirmCheckoutSession = async (req, res) => {
           addressLine,
           area: area || null,
           landmark: landmark || null,
-          city: city || "Kathmandu",
-          deliveryZone,
+          city: quote.zone.city,
+          deliveryZone: quote.zone.areaType,
+          deliveryZoneId: quote.zone.id,
+          deliveryTierSnapshot: quote.zone.tier,
+          deliveryCitySnapshot: quote.zone.city,
           notes: notes || null,
         },
       });
@@ -362,13 +346,14 @@ export const confirmCheckoutSession = async (req, res) => {
         where: { id: session.id },
         data: {
           status: "completed",
-          deliveryZone,
+          deliveryZone: quote.zone.areaType,
+          deliveryZoneId: quote.zone.id,
           fullName,
           phone,
           addressLine,
           area: area || null,
           landmark: landmark || null,
-          city: city || "Kathmandu",
+          city: quote.zone.city,
           notes: notes || null,
         },
       });
@@ -405,6 +390,6 @@ export const confirmCheckoutSession = async (req, res) => {
     return res.status(201).json({ order: result.order });
   } catch (err) {
     console.error("confirmCheckoutSession error:", err);
-    return res.status(500).json({ message: "internal server error" });
+    return res.status(err.status || 500).json({ message: err.status ? err.message : "internal server error" });
   }
 };

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { notifyCartUpdated } from "../../utils/cartEvents";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
@@ -236,7 +236,6 @@ function OrderSummary({ items, onCheckout }) {
 
 /* ─── MAIN CART PAGE ─── */
 export default function Cart() {
-  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [cart, setCart] = useState(null);
@@ -278,6 +277,7 @@ export default function Cart() {
       if (!res.ok) throw new Error(data.message || "Update failed");
       if (data.warning) setWarning(data.warning);
       await fetchCart();
+      notifyCartUpdated();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -298,6 +298,7 @@ export default function Cart() {
         ...prev,
         items: prev.items.filter((i) => i.id !== itemId),
       }));
+      notifyCartUpdated();
     } catch (err) {
       setError(err.message);
     } finally {

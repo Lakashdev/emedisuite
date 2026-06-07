@@ -1,4 +1,5 @@
 import { prisma } from "../config/prisma.js";
+import { productSearchScore } from "../utils/catalogSearch.js";
 
 export const listProducts = async (req, res) => {
   const { q, brandId, categoryId, status, page = "1", limit = "12" } = req.query;
@@ -10,25 +11,39 @@ export const listProducts = async (req, res) => {
     ...(status ? { status } : {}),
     ...(brandId ? { brandId } : {}),
     ...(categoryId ? { categoryId } : {}),
-    ...(q
-      ? {
-          OR: [
-            { name: { contains: q, mode: "insensitive" } },
-            { slug: { contains: q, mode: "insensitive" } },
-          ],
-        }
-      : {}),
   };
+
+  const include = {
+    brand: { select: { id: true, name: true, slug: true } },
+    category: { select: { id: true, name: true, slug: true } },
+    images: true,
+    variants: true,
+  };
+
+  if (q?.trim()) {
+    const candidates = await prisma.product.findMany({ where, include });
+    const ranked = candidates
+      .map((product) => ({ product, rank: productSearchScore(q, product) }))
+      .filter((item) => item.rank > 0)
+      .sort((a, b) => b.rank - a.rank || b.product.createdAt - a.product.createdAt);
+
+    const total = ranked.length;
+    const start = (pageNum - 1) * limitNum;
+    const items = ranked.slice(start, start + limitNum).map((item) => item.product);
+
+    return res.json({
+      items,
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    });
+  }
 
   const [items, total] = await Promise.all([
     prisma.product.findMany({
       where,
-      include: {
-        brand: { select: { id: true, name: true, slug: true } },
-        category: { select: { id: true, name: true, slug: true } },
-        images: true,
-        variants: true,
-      },
+      include,
       orderBy: { createdAt: "desc" },
       skip: (pageNum - 1) * limitNum,
       take: limitNum,
@@ -43,6 +58,53 @@ export const listProducts = async (req, res) => {
     total,
     totalPages: Math.ceil(total / limitNum),
   });
+};
+
+export const listBestSellers = async (req, res) => {
+  const limitNum = Math.min(12, Math.max(1, parseInt(req.query.limit || "6", 10)));
+  const topSales = await prisma.orderItem.groupBy({
+    by: ["productId"],
+    where: {
+      order: {
+        is: { status: { notIn: ["Cancelled"] } },
+      },
+    },
+    _sum: { quantity: true },
+    orderBy: { _sum: { quantity: "desc" } },
+    take: limitNum,
+  });
+
+  const productIds = topSales.map((item) => item.productId);
+  const include = {
+    brand: { select: { id: true, name: true, slug: true } },
+    category: { select: { id: true, name: true, slug: true } },
+    images: { orderBy: { position: "asc" }, take: 1 },
+    variants: true,
+  };
+
+  const soldProducts = productIds.length
+    ? await prisma.product.findMany({
+        where: { id: { in: productIds }, status: "active" },
+        include,
+      })
+    : [];
+  const productsById = new Map(soldProducts.map((product) => [product.id, product]));
+  const items = productIds.map((id) => productsById.get(id)).filter(Boolean);
+
+  if (items.length < limitNum) {
+    const fallback = await prisma.product.findMany({
+      where: {
+        status: "active",
+        id: { notIn: items.map((item) => item.id) },
+      },
+      include,
+      orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+      take: limitNum - items.length,
+    });
+    items.push(...fallback);
+  }
+
+  res.json({ items });
 };
 
 export const getProductById = async (req, res) => {

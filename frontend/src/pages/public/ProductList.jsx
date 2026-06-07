@@ -601,6 +601,7 @@ export default function ProductList() {
   const [brands, setBrands] = useState([]);
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+  const [totalResults, setTotalResults] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -616,6 +617,13 @@ export default function ProductList() {
     for (const c of categories) m.set(c.slug, c.id);
     return m;
   }, [categories]);
+
+  useEffect(() => {
+    setQ(searchParams.get("q") || "");
+    setCategorySlug(searchParams.get("category") || "");
+    setBrandSlug(searchParams.get("brand") || "");
+    setPage(1);
+  }, [searchParams]);
 
   useEffect(() => {
     let ignore = false;
@@ -648,11 +656,13 @@ export default function ProductList() {
         const categoryId = categorySlug ? categorySlugToId.get(categorySlug) : "";
         if (brandId) params.set("brandId", brandId);
         if (categoryId) params.set("categoryId", categoryId);
+        params.set("status", "active");
         params.set("page", String(page));
         params.set("limit", String(limit));
         const res = await api.get(`/products?${params.toString()}`);
         if (ignore) return;
         setProducts(res.data?.items || []);
+        setTotalResults(res.data?.total || 0);
         setTotalPages(res.data?.totalPages || 1);
       } catch (e) {
         if (!ignore) setErr(safeJsonMessage(e));
@@ -734,8 +744,14 @@ export default function ProductList() {
           <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3">
             <div>
               <div className="ms-page-eyebrow">Medisuite Pharmacy</div>
-              <h1 className="ms-page-title">All Products</h1>
-              <p className="ms-page-sub">Browse pharmacy essentials — click any product to view details.</p>
+              <h1 className="ms-page-title">
+                {q.trim() ? `Search results for "${q.trim()}"` : "All Products"}
+              </h1>
+              <p className="ms-page-sub">
+                {q.trim()
+                  ? `${totalResults} matching ${totalResults === 1 ? "product" : "products"} found.`
+                  : "Browse pharmacy essentials and wellness products."}
+              </p>
             </div>
             {/* Search */}
             <div className="ms-search-wrap">
@@ -829,7 +845,14 @@ export default function ProductList() {
                 <label className="ms-filter-label">Quick picks</label>
                 <div className="d-flex flex-wrap gap-2">
                   {["Essentials", "Skincare", "Wellness", "Baby Care", "Vitamins"].map((tag) => (
-                    <button key={tag} className="ms-tag" type="button">{tag}</button>
+                    <button
+                      key={tag}
+                      className="ms-tag"
+                      type="button"
+                      onClick={() => { setQ(tag); setPage(1); }}
+                    >
+                      {tag}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -843,7 +866,7 @@ export default function ProductList() {
               <div className="ms-count">
                 {loading
                   ? "Loading…"
-                  : <><b>{filtered.length}</b> of <b>{products.length}</b> products</>}
+                  : <><b>{totalResults}</b> {totalResults === 1 ? "product" : "products"} found</>}
               </div>
               <div className="d-flex gap-2 align-items-center">
                 <span className="ms-sort-label">Sort</span>

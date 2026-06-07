@@ -29,14 +29,12 @@ export default function AdminLayout() {
   const isSettingsActive = location.pathname.startsWith("/admin/settings");
 
   return (
-    <div className="d-flex" style={{ minHeight: "100vh", background: "#f6f7fb" }}>
+    <div className="d-flex admin-shell">
       {/* Sidebar */}
       <aside
-        className="text-white d-flex flex-column"
+        className="text-white d-flex flex-column admin-sidebar"
         style={{
-          width: 270,
-          background: "linear-gradient(180deg, #0b1320 0%, #0d1b2a 100%)",
-          borderRight: "1px solid rgba(255,255,255,.08)",
+          width: 280,
         }}
       >
         {/* Brand */}
@@ -97,6 +95,7 @@ export default function AdminLayout() {
           <NavLink to="/admin/products" className={navLinkClass}>
             <i className="bi bi-box-seam" /> <span>Products</span>
           </NavLink>
+          
 
           <NavLink to="/admin/orders" className={navLinkClass}>
             <i className="bi bi-receipt" /> <span>Orders</span>
@@ -127,6 +126,12 @@ export default function AdminLayout() {
                 <NavLink to="/admin/settings/store-info" className={subLinkClass}>
                   <i className="bi bi-shop" /> <span>Store Info</span>
                 </NavLink>
+                <NavLink to="/admin/settings/trending-products" className={subLinkClass}>
+                  <i className="bi bi-stars" /> <span>Trending Products</span>
+                </NavLink>
+                <NavLink to="/admin/settings/delivery" className={subLinkClass}>
+                  <i className="bi bi-truck" /> <span>Delivery</span>
+                </NavLink>
               </div>
             )}
           </div>
@@ -149,7 +154,7 @@ export default function AdminLayout() {
 
       {/* Main */}
       <div className="flex-grow-1 d-flex flex-column">
-        <header className="bg-white border-bottom">
+        <header className="admin-topbar">
           <div className="container-fluid py-3 d-flex align-items-center justify-content-between">
             <div className="fw-semibold">Admin Dashboard</div>
             <div className="d-flex align-items-center gap-2">
@@ -158,7 +163,7 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        <main className="container-fluid py-4 flex-grow-1">
+        <main className="container-fluid flex-grow-1 admin-content">
           <Outlet />
         </main>
       </div>

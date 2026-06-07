@@ -1,0 +1,1228 @@
+
+================ frontend\src\pages\account\Profile.jsx ================
+
+import { useEffect, useMemo, useState } from "react";
+import { Link,useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+
+/* const API = "http://localhost:5000"; */
+const API = "/api";
+function money(n) {
+  const v = Number(n || 0);
+  return `Rs. ${v.toLocaleString("en-US")}`;
+}
+
+function fmtDate(d) {
+  if (!d) return "-";
+  const dt = new Date(d);
+  return dt.toLocaleDateString();
+}
+
+export default function Profile() {
+  const { token, user, setUser, authFetch } = useAuth();
+  const navigate = useNavigate();
+
+  const [profileForm, setProfileForm] = useState({ name: "", email: "", phone: "" });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [summary, setSummary] = useState(null);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [recentProducts, setRecentProducts] = useState([]);
+
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
+  const [showVerify, setShowVerify] = useState(false);
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [verifyMsg, setVerifyMsg] = useState("");
+
+  const headers = useMemo(
+    () => ({
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    }),
+    [token]
+  );
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAll() {
+      setErr("");
+      setOk("");
+      setLoading(true);
+
+      try {
+        // Load profile + dashboard data in parallel
+        const [meRes, sumRes, ordRes, prodRes] = await Promise.all([
+          authFetch(`${API}/profile/me`, { headers: { Authorization: `Bearer ${token}` } }),
+          authFetch(`${API}/profile/summary`, { headers: { Authorization: `Bearer ${token}` } }),
+          authFetch(`${API}/profile/recent-orders?limit=5`, { headers: { Authorization: `Bearer ${token}` } }),
+          authFetch(`${API}/profile/recent-products?limit=8`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+
+        const me = await meRes.json();
+        const sum = await sumRes.json();
+        const ord = await ordRes.json();
+        const prod = await prodRes.json();
+
+        if (!meRes.ok) throw new Error(me.message || "Failed to load profile");
+        // If summary/orders/products endpoints not added yet, don't hard-fail the page:
+        const summaryOk = sumRes.ok ? sum.summary : null;
+        const ordersOk = ordRes.ok ? ord.orders : [];
+        const productsOk = prodRes.ok ? prod.products : [];
+
+        if (ignore) return;
+
+        setProfileForm({
+          name: me.user?.name || "",
+          email: me.user?.email || "",
+          phone: me.user?.phone || "",
+        });
+
+        setUser(me.user);
+        setSummary(summaryOk);
+        setRecentOrders(Array.isArray(ordersOk) ? ordersOk : []);
+        setRecentProducts(Array.isArray(productsOk) ? productsOk : []);
+      } catch (e) {
+        if (!ignore) setErr(e.message || "Something went wrong");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    loadAll();
+    return () => {
+      ignore = true;
+    };
+  }, [token, setUser]);
+
+  const setField = (k, v) => setProfileForm((s) => ({ ...s, [k]: v }));
+
+  const onSaveProfile = async (e) => {
+    e.preventDefault();
+    setErr("");
+    setOk("");
+
+    if (!profileForm.name.trim()) return setErr("Name is required");
+
+    setSaving(true);
+    try {
+      const res = await authFetch(`${API}/profile/me`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          name: profileForm.name.trim(),
+          email: profileForm.email.trim() || null,
+          phone: profileForm.phone.trim() || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Update failed");
+
+      setOk("Profile updated successfully");
+      setUser(data.user);
+      localStorage.setItem("user", JSON.stringify(data.user));
+    } catch (e) {
+      setErr(e.message || "Update failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onVerifyEmail = async () => {
+    setVerifyMsg("");
+    if (!/^\d{6}$/.test(code)) {
+      setVerifyMsg("Enter a valid 6-digit code");
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      const res = await authFetch(`${API}/auth/verify-email`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ code }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Verification failed");
+
+      const updated = { ...user, emailVerified: true };
+      setUser(updated);
+      localStorage.setItem("user", JSON.stringify(updated));
+
+      setVerifyMsg("Email verified successfully ✅");
+      setShowVerify(false);
+      setCode("");
+    } catch (e) {
+      setVerifyMsg(e.message || "Verification failed");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const onResendCode = async () => {
+    setVerifyMsg("");
+    setResending(true);
+    try {
+      const res = await authFetch(`${API}/auth/resend-email-code`, {
+        method: "POST",
+        headers,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Resend failed");
+
+      setVerifyMsg("A new code has been sent to your email.");
+    } catch (e) {
+      setVerifyMsg(e.message || "Resend failed");
+    } finally {
+      setResending(false);
+    }
+  };
+
+  if (!token) {
+    return <div className="container py-5">Please login again.</div>;
+  }
+  if (loading) return <div className="container py-5">Loading account…</div>;
+
+  return (
+    <div className="container py-4" style={{ maxWidth: 1100 }}>
+      <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+        <div>
+          <h2 className="fw-bold mb-1">My Account</h2>
+          <div className="text-secondary">
+            Welcome back, <span className="fw-semibold">{user?.name}</span>
+          </div>
+        </div>
+
+        <div className="d-flex gap-2">
+          <Link className="btn btn-outline-secondary" to="/orders">
+            View all orders
+          </Link>
+          <Link className="btn btn-brand" to="/products">
+            Continue shopping
+          </Link>
+        </div>
+      </div>
+
+      {err ? <div className="alert alert-danger">{err}</div> : null}
+      {ok ? <div className="alert alert-success">{ok}</div> : null}
+
+      {user?.email && !user?.emailVerified ? (
+        <div className="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <div className="fw-semibold">Verify your email</div>
+            <div className="small text-secondary">
+              For account security and password recovery, please verify your email address.
+            </div>
+          </div>
+
+          <button className="btn btn-brand btn-sm" onClick={() => setShowVerify(true)}>
+            Verify email
+          </button>
+        </div>
+      ) : null}
+
+      {/* KPI cards */}
+      <div className="row g-3 mb-4">
+        <div className="col-12 col-md-3">
+          <div className="card card-soft p-3 h-100">
+            <div className="text-secondary small">Total Orders</div>
+            <div className="fs-3 fw-bold">{summary?.totalOrders ?? "-"}</div>
+          </div>
+        </div>
+        <div className="col-12 col-md-3">
+          <div className="card card-soft p-3 h-100">
+            <div className="text-secondary small">Delivered</div>
+            <div className="fs-3 fw-bold">{summary?.deliveredOrders ?? "-"}</div>
+          </div>
+        </div>
+        <div className="col-12 col-md-3">
+          <div className="card card-soft p-3 h-100">
+            <div className="text-secondary small">Total Spent</div>
+            <div className="fs-4 fw-bold">{summary ? money(summary.totalSpent) : "-"}</div>
+          </div>
+        </div>
+        <div className="col-12 col-md-3">
+          <div className="card card-soft p-3 h-100">
+            <div className="text-secondary small">Last Order</div>
+            <div className="fw-semibold">
+              {summary?.lastOrder?.orderNumber ? `#${summary.lastOrder.orderNumber}` : "-"}
+            </div>
+            <div className="text-secondary small">{fmtDate(summary?.lastOrder?.placedAt)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="row g-4">
+        {/* Recent orders */}
+        <div className="col-12 col-lg-7">
+          <div className="card card-soft p-4">
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <h5 className="fw-bold mb-0">Recent Orders</h5>
+              <Link to="/orders" className="small" style={{ color: "var(--brand)" }}>
+                See all
+              </Link>
+            </div>
+
+            {recentOrders.length === 0 ? (
+              <div className="text-secondary">No orders yet. Start shopping!</div>
+            ) : (
+              <div className="table-responsive">
+                <table className="table align-middle">
+                  <thead>
+                    <tr className="text-secondary small">
+                      <th>Order</th>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th className="text-end">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentOrders.map((o) => (
+                      <tr key={o.id}>
+                        <td className="fw-semibold">#{o.orderNumber}</td>
+                        <td>{fmtDate(o.placedAt)}</td>
+                        <td>
+                          <span className="badge bg-light text-dark border">{o.status}</span>
+                        </td>
+                        <td className="text-end">{money(o.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Edit profile */}
+          <div className="card card-soft p-4 mt-4">
+            <h5 className="fw-bold mb-3">Profile Details</h5>
+
+            <form onSubmit={onSaveProfile} className="row g-3">
+              <div className="col-12">
+                <label className="form-label">Full name</label>
+                <input
+                  className="form-control"
+                  value={profileForm.name}
+                  onChange={(e) => setField("name", e.target.value)}
+                />
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label">Email</label>
+                <input
+                  className="form-control"
+                  value={profileForm.email}
+                  onChange={(e) => setField("email", e.target.value)}
+                  placeholder="name@example.com"
+                />
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label">Phone</label>
+                <input
+                  className="form-control"
+                  value={profileForm.phone}
+                  onChange={(e) => setField("phone", e.target.value)}
+                  placeholder="98XXXXXXXX"
+                />
+              </div>
+
+              <div className="col-12 d-flex align-items-center">
+                <button className="btn btn-brand" disabled={saving}>
+                  {saving ? "Saving..." : "Save changes"}
+                </button>
+                <div className="ms-auto text-secondary small">
+                  Member since {fmtDate(user?.createdAt)}
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {/* Previously purchased */}
+        <div className="col-12 col-lg-5">
+          <div className="card card-soft p-4">
+            <h5 className="fw-bold mb-2">Previously Purchased</h5>
+            <div className="text-secondary small mb-3">
+              Quickly reorder items you bought before.
+            </div>
+
+            {recentProducts.length === 0 ? (
+              <div className="text-secondary">No purchase history yet.</div>
+            ) : (
+              <div className="row g-3">
+                {recentProducts.map((p) => (
+                  <div className="col-12" key={p.productId}>
+                    <div className="d-flex gap-3 align-items-center border rounded-4 p-3">
+                      <div
+                        className="rounded-3"
+                        style={{
+                          width: 56,
+                          height: 56,
+                          background: "rgba(15,23,42,.06)",
+                          overflow: "hidden",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {p.image ? (
+                          <img src={p.image} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          <span className="text-secondary small">No image</span>
+                        )}
+                      </div>
+
+                      <div className="flex-grow-1">
+                        <div className="fw-semibold">{p.name}</div>
+                        <div className="text-secondary small">{money(p.price)}</div>
+                      </div>
+
+                      <Link to={p.slug ? `/products/${p.slug}` : "/products"} className="btn btn-outline-secondary btn-sm">
+                        View
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3">
+              <Link to="/products" className="btn btn-outline-secondary w-100">
+                Browse products
+              </Link>
+            </div>
+          </div>
+
+          {/* Small quick actions */}
+          <div className="card card-soft p-4 mt-4">
+            <h6 className="fw-bold mb-2">Quick Actions</h6>
+            <div className="d-grid gap-2">
+              <Link to="/cart" className="btn btn-outline-secondary">
+                Go to cart
+              </Link>
+              <Link to="/checkout" className="btn btn-outline-secondary">
+                Checkout
+              </Link>
+              <Link to="/orders" className="btn btn-outline-secondary">
+                Track orders
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+      {showVerify ? (
+        <div className="modal d-block" tabIndex="-1" role="dialog" style={{ background: "rgba(0,0,0,.45)" }}>
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content rounded-4">
+              <div className="modal-header">
+                <h5 className="modal-title">Verify email</h5>
+                <button type="button" className="btn-close" onClick={() => setShowVerify(false)} />
+              </div>
+
+              <div className="modal-body">
+                <div className="text-secondary small mb-2">
+                  Enter the 6-digit code sent to <span className="fw-semibold">{user?.email}</span>
+                </div>
+
+                <input
+                  className="form-control"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="123456"
+                  inputMode="numeric"
+                  maxLength={6}
+                />
+
+                {verifyMsg ? <div className="small mt-2">{verifyMsg}</div> : null}
+              </div>
+
+              <div className="modal-footer d-flex justify-content-between">
+                <button className="btn btn-outline-secondary" onClick={onResendCode} disabled={resending}>
+                  {resending ? "Sending..." : "Resend code"}
+                </button>
+
+                <button className="btn btn-brand" onClick={onVerifyEmail} disabled={verifying}>
+                  {verifying ? "Verifying..." : "Verify"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+================ frontend\src\utils\api.js ================
+
+import { getAccessToken, getRefreshToken, setTokens, clearTokens } from "./authStorage";
+
+const BASE_URL = import.meta.env.VITE_API_URL;
+
+async function request(path, { method = "GET", body, auth = false } = {}) {
+  const headers = { "Content-Type": "application/json" };
+
+  if (auth) {
+    const token = getAccessToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  // If access token expired, try refresh once
+  if (auth && res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      const retryHeaders = { "Content-Type": "application/json" };
+      const token2 = getAccessToken();
+      if (token2) retryHeaders.Authorization = `Bearer ${token2}`;
+
+      const retryRes = await fetch(`${BASE_URL}${path}`, {
+        method,
+        headers: retryHeaders,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      return handleResponse(retryRes);
+    }
+
+    clearTokens();
+    throw new Error("Unauthorized");
+  }
+
+  return handleResponse(res);
+}
+
+async function handleResponse(res) {
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    const msg = data?.message || `Request failed (${res.status})`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+
+  return data;
+}
+
+async function refreshAccessToken() {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  try {
+    const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) return false;
+
+    // expected response: { accessToken, refreshToken? }
+    setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const api = {
+  get: (path, opts) => request(path, { ...opts, method: "GET" }),
+  post: (path, body, opts) => request(path, { ...opts, method: "POST", body }),
+  put: (path, body, opts) => request(path, { ...opts, method: "PUT", body }),
+  del: (path, opts) => request(path, { ...opts, method: "DELETE" }),
+};
+
+================ frontend\src\lib\api.js ================
+
+import axios from "axios";
+
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  withCredentials: false, // keep true if your backend uses cookies/session
+});
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    // optional: normalize error
+    const msg =
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      err.message ||
+      "Something went wrong";
+    return Promise.reject(new Error(msg));
+  }
+);
+
+================ frontend\src\utils\authStorage.js ================
+
+const ACCESS_KEY = "access_token";
+const REFRESH_KEY = "refresh_token";
+const USER_KEY = "auth_user";
+
+export function getAccessToken() {
+  return localStorage.getItem(ACCESS_KEY);
+}
+
+export function getRefreshToken() {
+  return localStorage.getItem(REFRESH_KEY);
+}
+
+export function setTokens({ accessToken, refreshToken }) {
+  if (accessToken) localStorage.setItem(ACCESS_KEY, accessToken);
+  if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
+}
+
+export function clearTokens() {
+  localStorage.removeItem(ACCESS_KEY);
+  localStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+export function setUser(user) {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function getUser() {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+export function clearAuth() {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
+  localStorage.removeItem("auth_user");
+}
+
+================ frontend\src\context\AuthContext.jsx ================
+
+import { createContext, useContext, useMemo, useState, useEffect } from "react";
+import api from "../api/axios.js";
+import { getJSON, setJSON, removeItem } from "../utils/storage.js";
+
+const AuthContext = createContext(null);
+
+const parseJwt = (token) => {
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(decodeURIComponent(atob(base64).split("").map((c) =>
+      "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)
+    ).join("")));
+  } catch { return null; }
+};
+
+export function AuthProvider({ children }) {
+  const [token, setToken] = useState(() => localStorage.getItem("token") || "");
+  const [user, setUser] = useState(() => getJSON("user"));
+
+  const isAuthenticated = !!token && !!user;
+
+  const logout = () => {
+    setToken("");
+    setUser(null);
+    removeItem("token");
+    removeItem("user");
+  };
+
+  // Auto-logout on token expiry at startup
+  useEffect(() => {
+    if (!token) return;
+    const payload = parseJwt(token);
+    if (payload?.exp && payload.exp * 1000 <= Date.now()) logout();
+  }, []);   // intentionally run once on mount
+
+  const login = async ({ identifier, password }) => {
+    const { data } = await api.post("/auth/login", { identifier, password });
+    const accessToken = data.accessToken || data.token;
+    const u = data.user;
+    if (!accessToken || !u) throw new Error("Login failed");
+    setToken(accessToken);
+    setUser(u);
+    localStorage.setItem("token", accessToken);
+    setJSON("user", u);
+    return { token: accessToken, user: u };
+  };
+
+  const register = async ({ name, email, phone, password }) => {
+    const { data } = await api.post("/auth/register", { name, email, phone, password });
+    const accessToken = data.accessToken || data.token;
+    const u = data.user;
+    if (!accessToken || !u) throw new Error("Registration failed");
+    setToken(accessToken);
+    setUser(u);
+    localStorage.setItem("token", accessToken);
+    setJSON("user", u);
+    return { token: accessToken, user: u };
+  };
+
+  const value = useMemo(
+    () => ({ token, user, isAuthenticated, login, register, logout, setUser, setToken }),
+    [token, user, isAuthenticated]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
+}
+
+================ backend\src\controllers\profile.controller.js ================
+
+import { prisma } from "../config/prisma.js";
+
+// GET /api/profile/me
+export async function getMe(req, res) {
+  try {
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+        emailVerified: true, // ✅ ADD THIS
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    return res.json({ user });
+  } catch (err) {
+    console.error("getMe error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// PUT /api/profile/me
+export async function updateMe(req, res) {
+  try {
+    const userId = req.user.id;
+    const { name, email, phone } = req.body;
+
+    const cleanName = String(name || "").trim();
+    const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+    const cleanPhone = phone ? String(phone).trim() : null;
+
+    if (!cleanName) {
+      return res.status(400).json({ message: "Name is required" });
+    }
+
+    // Optional: prevent empty string stored as email/phone
+    // If you want to keep existing when user sends empty, do it on frontend.
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: cleanName,
+        email: cleanEmail,
+        phone: cleanPhone,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return res.json({ message: "Profile updated", user: updated });
+  } catch (err) {
+    console.error("updateMe error:", err);
+
+    // Prisma unique constraint violation (email/phone)
+    if (err?.code === "P2002") {
+      const target = err?.meta?.target?.join(", ") || "field";
+      return res.status(400).json({ message: `${target} already in use` });
+    }
+
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+export async function getProfileSummary(req, res) {
+  try {
+    const userId = req.user.id;
+
+    const orders = await prisma.order.findMany({
+      where: { userId },
+      select: { id: true, total: true, status: true, placedAt: true, orderNumber: true },
+      orderBy: { placedAt: "desc" },
+    });
+
+    const totalOrders = orders.length;
+    const deliveredOrders = orders.filter((o) => o.status === "Delivered").length;
+    const cancelledOrders = orders.filter((o) => o.status === "Cancelled").length;
+    const totalSpent = orders
+      .filter((o) => o.status !== "Cancelled")
+      .reduce((sum, o) => sum + (o.total || 0), 0);
+
+    const lastOrder = orders[0] || null;
+
+    return res.json({
+      summary: {
+        totalOrders,
+        deliveredOrders,
+        cancelledOrders,
+        totalSpent,
+        lastOrder,
+      },
+    });
+  } catch (err) {
+    console.error("getProfileSummary error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+export async function getRecentOrders(req, res) {
+  try {
+    const userId = req.user.id;
+    const limit = Math.min(Number(req.query.limit || 5), 20);
+
+    const orders = await prisma.order.findMany({
+      where: { userId },
+      orderBy: { placedAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        total: true,
+        placedAt: true,
+      },
+    });
+
+    return res.json({ orders });
+  } catch (err) {
+    console.error("getRecentOrders error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+export async function getRecentProducts(req, res) {
+  try {
+    const userId = req.user.id;
+    const limit = Math.min(Number(req.query.limit || 8), 24);
+
+    // Take recent delivered/placed orders and fetch items
+    const orderItems = await prisma.orderItem.findMany({
+      where: {
+        order: { userId },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200, // scan recent items
+      select: {
+        productId: true,
+        productName: true,
+        unitPrice: true,
+        product: {
+          select: {
+            slug: true,
+            images: { take: 1, orderBy: { position: "asc" }, select: { url: true } },
+          },
+        },
+      },
+    });
+
+    // Deduplicate by productId keeping latest
+    const map = new Map();
+    for (const it of orderItems) {
+      if (!map.has(it.productId)) {
+        map.set(it.productId, {
+          productId: it.productId,
+          name: it.productName,
+          slug: it.product?.slug,
+          price: it.unitPrice,
+          image: it.product?.images?.[0]?.url || null,
+        });
+      }
+      if (map.size >= limit) break;
+    }
+
+    return res.json({ products: Array.from(map.values()) });
+  } catch (err) {
+    console.error("getRecentProducts error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+
+================ backend\src\routes\profile.routes.js ================
+
+import { Router } from "express";
+import { requireAuth } from "../middleware/auth.middleware.js";
+import { getMe, updateMe, getProfileSummary, getRecentOrders, getRecentProducts } from "../controllers/profile.controller.js";
+
+const router = Router();
+
+router.get("/me", requireAuth, getMe);
+router.put("/me", requireAuth, updateMe);
+
+router.get("/summary", requireAuth, getProfileSummary);
+router.get("/recent-orders", requireAuth, getRecentOrders);
+router.get("/recent-products", requireAuth, getRecentProducts);
+
+export default router;
+
+================ backend\src\controllers\auth.controller.js ================
+
+import bcrypt from "bcryptjs";
+import { prisma } from "../config/prisma.js";
+import { signAccessToken } from "../utils/jwt.js";
+import { genOtp6, hashOtp, sendEmailOtp } from "../utils/emailOtp.js";
+
+export const register = async (req, res) => {
+  try {
+    const { name, email, phone, password } = req.body;
+
+    if (!name || !password) {
+      return res.status(400).json({ message: "name and password are required" });
+    }
+    if (!email && !phone) {
+      return res.status(400).json({ message: "email or phone is required" });
+    }
+
+    if (email) {
+      const existingEmail = await prisma.user.findUnique({ where: { email } });
+      if (existingEmail) return res.status(409).json({ message: "email already in use" });
+    }
+
+    if (phone) {
+      const existingPhone = await prisma.user.findUnique({ where: { phone } });
+      if (existingPhone) return res.status(409).json({ message: "phone already in use" });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // ✅ create user
+    const user = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: email?.trim() || null,
+        phone: phone?.trim() || null,
+        passwordHash,
+        role: "customer",
+        emailVerified: false, // ✅ requires prisma field
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        createdAt: true,
+        emailVerified: true, // ✅ send to frontend
+      },
+    });
+
+    // ✅ send OTP only if email exists
+    if (user.email) {
+      const otp = genOtp6();
+      const expMin = Number(process.env.EMAIL_OTP_EXP_MIN || 10);
+      const expiresAt = new Date(Date.now() + expMin * 60 * 1000);
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          emailOtpHash: hashOtp(otp),
+          emailOtpExpiresAt: expiresAt,
+          emailOtpAttempts: 0,
+          emailOtpLastSentAt: new Date(),
+        },
+      });
+
+      // ✅ don't block registration if email fails
+      sendEmailOtp(user.email, otp).catch((e) =>
+        console.error("sendEmailOtp failed:", e)
+      );
+    }
+
+    const accessToken = signAccessToken({ sub: user.id, role: user.role });
+
+    return res.status(201).json({
+      user,
+      accessToken,
+    });
+  } catch (error) {
+    console.error("Register error:", error);
+    return res.status(500).json({ message: "internal server error" });
+  }
+};
+
+export const verifyEmail = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { code } = req.body;
+
+    if (!code || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ message: "Invalid verification code" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.email) {
+      return res.status(400).json({ message: "Email not found" });
+    }
+
+    if (user.emailVerified) {
+      return res.json({ message: "Email already verified" });
+    }
+
+    if (!user.emailOtpHash || !user.emailOtpExpiresAt) {
+      return res.status(400).json({ message: "No verification code found" });
+    }
+
+    if (new Date() > user.emailOtpExpiresAt) {
+      return res.status(400).json({ message: "Code expired. Please resend." });
+    }
+
+    const valid = hashOtp(code) === user.emailOtpHash;
+
+    if (!valid) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { emailOtpAttempts: { increment: 1 } },
+      });
+      return res.status(400).json({ message: "Incorrect code" });
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerified: true,
+        emailOtpHash: null,
+        emailOtpExpiresAt: null,
+        emailOtpAttempts: 0,
+      },
+    });
+
+    return res.json({ message: "Email verified successfully" });
+  } catch (error) {
+    console.error("verifyEmail error:", error);
+    return res.status(500).json({ message: "internal server error" });
+  }
+};
+
+export const resendEmailCode = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.email) {
+      return res.status(400).json({ message: "Email not found" });
+    }
+
+    if (user.emailVerified) {
+      return res.json({ message: "Already verified" });
+    }
+
+    const otp = genOtp6();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailOtpHash: hashOtp(otp),
+        emailOtpExpiresAt: expiresAt,
+        emailOtpAttempts: 0,
+        emailOtpLastSentAt: new Date(),
+      },
+    });
+
+    await sendEmailOtp(user.email, otp);
+
+    return res.json({ message: "Verification code sent" });
+  } catch (error) {
+    console.error("resendEmailCode error:", error);
+    return res.status(500).json({ message: "internal server error" });
+  }
+};
+
+export const login = async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+
+    if (!identifier || !password) {
+      return res.status(400).json({ message: "identifier and password are required" });
+    }
+
+    const isEmail = identifier.includes("@");
+
+    const user = await prisma.user.findFirst({
+      where: isEmail
+        ? { email: identifier }
+        : { phone: identifier },
+    });
+
+    if (!user) {
+      return res.status(401).json({ message: "invalid credentials" });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!isValidPassword) {
+      return res.status(401).json({ message: "invalid credentials" });
+    }
+
+    const accessToken = signAccessToken({
+      sub: user.id,
+      role: user.role,
+    });
+
+    return res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+      },
+      accessToken,
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    return res.status(500).json({ message: "internal server error" });
+  }
+};
+
+================ backend\src\routes\auth.routes.js ================
+
+import { Router } from "express";
+import { register, login, verifyEmail, resendEmailCode } from "../controllers/auth.controller.js";
+import { forgotPassword, resetPassword } from "../controllers/passwordReset.controller.js";
+import { requireAuth } from "../middleware/auth.middleware.js";
+
+const authRoutes = Router();
+
+authRoutes.post("/register", register);
+authRoutes.post("/login", login);
+authRoutes.post("/forgot-password", forgotPassword);
+authRoutes.post("/reset-password", resetPassword);
+
+
+authRoutes.post("/verify-email", requireAuth, verifyEmail);
+authRoutes.post("/resend-email-code", requireAuth, resendEmailCode);
+export default authRoutes;
+
+================ backend\src\utils\emailOtp.js ================
+
+import crypto from "crypto";
+import { mailer } from "../config/mailer.js";
+
+export const genOtp6 = () =>
+    Math.floor(100000 + Math.random() * 900000).toString();
+
+export const hashOtp = (otp) =>
+    crypto.createHash("sha256").update(otp).digest("hex");
+
+export const sendEmailOtp = async (toEmail, otp) => {
+    await mailer.sendMail({
+        from: process.env.MAIL_FROM,
+        to: toEmail,
+        subject: "Your MediSuite verification code",
+        text: `Your verification code is ${otp}. It expires in ${process.env.EMAIL_OTP_EXP_MIN || 10} minutes.`,
+        html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.5">
+        <h2>MediSuite email verification</h2>
+        <p>Your verification code is:</p>
+        <div style="font-size:28px;font-weight:700;letter-spacing:6px">${otp}</div>
+        <p>This code expires in <b>${process.env.EMAIL_OTP_EXP_MIN || 10} minutes</b>.</p>
+        <p>If you didn’t request this, you can ignore this email.</p>
+      </div>
+    `,
+    });
+};
+
+================ backend\src\services\email.service.js ================
+
+import nodemailer from "nodemailer";
+
+export function createMailer() {
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT || 587);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
+}
+
+export async function sendResetCodeEmail({ to, code }) {
+  const transporter = createMailer();
+
+  const from = process.env.SMTP_FROM;
+  const subject = "Your MediSuite password reset code";
+  const text = `Your password reset code is: ${code}\nThis code expires soon. If you did not request it, ignore this email.`;
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5">
+      <h2 style="margin:0 0 12px">Password reset</h2>
+      <p>Use this code to reset your MediSuite password:</p>
+      <div style="font-size:28px;font-weight:700;letter-spacing:6px;margin:16px 0">${code}</div>
+      <p style="color:#555">This code expires soon. If you did not request it, ignore this email.</p>
+    </div>
+  `;
+
+  await transporter.sendMail({ from, to, subject, text, html });
+}
+
+================ backend\src\config\mailer.js ================
+
+import nodemailer from "nodemailer";
+
+export const mailer = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false, // ✅ important for 587
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS, // ✅ App Password
+    },
+    tls: {
+        rejectUnauthorized: false, // helps on some Windows setups
+    },
+});
+
+
+================ backend\src\env.js ================
+
+import dotenv from "dotenv";
+dotenv.config({ path: ".env" });

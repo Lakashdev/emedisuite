@@ -1,5 +1,5 @@
 // backend/src/controllers/passwordReset.controller.js
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { prisma } from "../config/prisma.js";
 import { transporter } from "../utils/mailer.js";
 import { generate6DigitCode, hashCode } from "../utils/resetCode.js";

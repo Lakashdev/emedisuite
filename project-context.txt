@@ -1,0 +1,2521 @@
+
+================ backend\prisma\schema.prisma ================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id   String @id @default(cuid())
+  role String @default("customer") // customer | admin | cms_admin
+
+  name  String
+  email String? @unique
+  phone String? @unique
+
+  passwordHash String
+
+  emailVerified       Boolean   @default(false)
+  emailOtpHash        String?
+  emailOtpExpiresAt   DateTime?
+  emailOtpAttempts    Int       @default(0)
+  emailOtpLastSentAt  DateTime?
+
+  cart Cart?
+
+  orders           Order[]
+  checkoutSessions CheckoutSession[]
+  returnRequests   ReturnRequest[]
+  passwordResets   PasswordReset[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Brand {
+  id      String  @id @default(cuid())
+  name    String  @unique
+  slug    String  @unique
+  logoUrl String?
+  status  String  @default("active") // active | inactive
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id     String @id @default(cuid())
+  name   String
+  slug   String @unique
+  status String @default("active") // active | inactive
+
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+}
+
+model Product {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
+
+  description String?
+
+  basePrice Int
+  baseStock Int
+
+  discountType    String? // percent | fixed
+  discountValue   Int?
+  discountStartAt DateTime?
+  discountEndAt   DateTime?
+
+  prescriptionRequired Boolean @default(false)
+
+  status   String  @default("active") // active | draft | out_of_stock
+  featured Boolean @default(false)
+
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  images   ProductImage[]
+  variants ProductVariant[]
+
+  // added for CartItem relation (opposite side)
+  cartItems CartItem[]
+
+  orderItems       OrderItem[]
+  isReturnable     Boolean     @default(false)
+  returnWindowDays Int?
+
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  checkoutSessionItems CheckoutSessionItem[]
+  returnRequestItems   ReturnRequestItem[]
+  heroSlides HeroSlide[]
+  trendingProduct TrendingProduct?
+
+  @@index([brandId])
+  @@index([categoryId])
+  
+}
+
+model ProductImage {
+  id       String @id @default(cuid())
+  url      String
+  position Int    @default(0)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model ProductVariant {
+  id   String  @id @default(cuid())
+  name String // "10 tablets", "100ml"
+  sku  String? @unique
+
+  price Int
+  stock Int
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // added for CartItem relation (opposite side)
+  cartItems CartItem[]
+
+  orderItems OrderItem[]
+
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  checkoutSessionItems CheckoutSessionItem[]
+  returnRequestItems   ReturnRequestItem[]
+
+  @@index([productId])
+}
+
+model Cart {
+  id     String     @id @default(cuid())
+  userId String     @unique
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items  CartItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CartItem {
+  id String @id @default(cuid())
+
+  cartId String
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+
+  quantity Int
+
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  checkoutSessionItems CheckoutSessionItem[]
+
+  @@unique([cartId, productId, variantId])
+  @@index([cartId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+model StoreSettings {
+  id                 String @id @default(cuid())
+  deliveryFeeInside  Int    @default(0)
+  deliveryFeeOutside Int    @default(0)
+
+  cancelWindowHours       Int @default(24)
+  defaultReturnWindowDays Int @default(3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+model HeroSlide {
+  id       String @id @default(cuid())
+  position Int    @default(0) // sort order
+
+  // Left side
+  tag      String // "Baby & Family"
+  headline String // "Gentle Care\nfor Every One."  (use \n for line break)
+  sub      String // subtitle text
+  pill     String // offer pill text e.g. "Dermatologist tested"
+
+  // Buttons
+  ctaLabel  String // "Shop Baby Care"
+  ctaHref   String // "/products?category=baby-care"
+  ctaAltLabel String // "Family wellness"
+  ctaAltHref  String // "/products"
+
+  // Right card
+  featName  String  // "Baby Wash Gentle"
+  featPrice Int     // 599  (in NPR, no commas)
+  featOld   Int     // 749
+  icon      String  @default("bi-stars") // bootstrap icon class
+
+  // Trust badges (bottom of hero card)
+  stat1Val   String @default("100%")
+  stat1Label String @default("Genuine")
+  stat2Val   String @default("Same Day")
+  stat2Label String @default("Delivery")
+
+  // Micro trust line (bottom left)
+  micro1 String @default("Verified brands")
+  micro2 String @default("Delivers in Kathmandu")
+  micro3 String @default("Licensed pharmacy")
+
+  // Styling
+  accent String @default("#6BBF4E") // hex color
+  bg     String @default("linear-gradient(135deg, #E8F5E2 0%, #F4F8F0 55%, #EEF2F8 100%)")
+
+  // Optionally link to a real product
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  status    String   @default("active") // active | draft
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([position])
+  @@index([productId])
+}
+
+model Order {
+  id          String @id @default(cuid())
+  orderNumber String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  status String @default("Placed") // Placed, Confirmed, Packed, OutForDelivery, Delivered, Cancelled
+
+  subtotal      Int
+  discountTotal Int @default(0)
+  deliveryFee   Int
+  total         Int
+
+  paymentMethod String @default("COD") // only COD in MVP
+
+  fullName    String
+  phone       String
+  addressLine String
+  area        String?
+  landmark    String?
+  city        String  @default("Kathmandu")
+
+  deliveryZone String // inside | outside
+
+  notes String?
+
+  internalNote String?
+
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  deliveredAt DateTime?
+
+  placedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items          OrderItem[]
+  returnRequests ReturnRequest[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+
+  productName String
+  variantName String?
+  unitPrice   Int
+  quantity    Int
+  lineTotal   Int
+
+  createdAt          DateTime            @default(now())
+  returnRequestItems ReturnRequestItem[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+model CheckoutSession {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status String @default("active") // active | completed | cancelled | expired
+
+  deliveryZone String? // inside | outside (optional until user selects)
+  fullName     String?
+  phone        String?
+  addressLine  String?
+  area         String?
+  landmark     String?
+  city         String?
+
+  notes String?
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CheckoutSessionItem[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model CheckoutSessionItem {
+  id        String          @id @default(cuid())
+  sessionId String
+  session   CheckoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  cartItemId String
+  cartItem   CartItem @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+
+  quantity Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([sessionId, cartItemId])
+  @@index([sessionId])
+}
+
+model ReturnRequest {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status String  @default("Requested") // Requested | Approved | Rejected | PickedUp | Closed
+  reason String
+  note   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items ReturnRequestItem[]
+
+  @@index([orderId])
+  @@index([userId])
+  @@index([status])
+}
+
+model ReturnRequestItem {
+  id String @id @default(cuid())
+
+  returnRequestId String
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+
+  orderItemId String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+
+  quantity Int
+
+  productName String
+  variantName String?
+  unitPrice   Int
+
+  createdAt DateTime @default(now())
+
+  @@index([returnRequestId])
+  @@index([orderItemId])
+}
+
+model PasswordReset {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash    String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  attempts    Int      @default(0)
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model StoreInfo {
+  id String @id @default("singleton")
+
+  // Basic info
+  storeName   String @default("Medisuite")
+  tagline     String @default("Pharmacy essentials and skincare you can trust.")
+  description String @default("COD delivery with ring-road pricing and clear return rules for eligible products.")
+
+  // Contact
+  phone   String @default("+977 9860802178")
+  email   String @default("support@medisuite.com")
+  address String @default("Kathmandu, Nepal")
+
+  // Hours
+  openingHours String @default("9:00 AM – 7:00 PM")
+  openDays     String @default("Sunday – Friday")
+
+  // Social
+  instagramUrl String @default("")
+  facebookUrl  String @default("")
+  twitterUrl   String @default("")
+  tiktokUrl    String @default("")
+
+  // Footer newsletter
+  newsletterEnabled Boolean @default(true)
+  newsletterText    String  @default("Get offers + skincare tips")
+
+  // Footer legal links
+  termsUrl   String @default("/pages/terms")
+  privacyUrl String @default("/pages/privacy")
+  refundUrl  String @default("/pages/refund")
+
+  // About page
+  aboutHeadline    String @default("About Us")
+  aboutSubheadline String @default("We are a modern pharmacy and skincare store.")
+  aboutBody        String @default("Focused on quality, safety, and everyday wellness. We deliver genuine products with COD across Kathmandu.")
+  aboutMission     String @default("To make quality healthcare accessible for every family.")
+  aboutVision      String @default("Nepal's most trusted online pharmacy.")
+
+  // About page stats (shown as highlights)
+  stat1Val   String @default("100%")
+  stat1Label String @default("Genuine Products")
+  stat2Val   String @default("2000+")
+  stat2Label String @default("Happy Customers")
+  stat3Val   String @default("Same Day")
+  stat3Label String @default("Delivery")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+model TrendingProduct {
+  id        String   @id @default(cuid())
+  productId String   @unique
+  position  Int
+  addedAt   DateTime @default(now())
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("trending_products")
+}
+
+================ backend\src\controllers\order.controller.js ================
+
+import { prisma } from "../config/prisma.js";
+import { sendOrderEmails } from "../utils/orderEmail.js";
+
+function generateOrderNumber() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `ORD-${y}${m}${d}-${rand}`;
+}
+
+async function getSettings(tx) {
+  const existing = await tx.storeSettings.findFirst();
+  if (existing) return existing;
+
+  return tx.storeSettings.create({
+    data: { deliveryFeeInside: 0, deliveryFeeOutside: 0 },
+  });
+}
+
+export const placeOrder = async (req, res) => {
+  const userId = req.user.id;
+
+  const {
+    fullName,
+    phone,
+    addressLine,
+    area,
+    landmark,
+    city,
+    deliveryZone, // "inside" | "outside"
+    notes,
+  } = req.body;
+
+  if (!fullName || !phone || !addressLine || !deliveryZone) {
+    return res.status(400).json({ message: "fullName, phone, addressLine, deliveryZone are required" });
+  }
+  if (!["inside", "outside"].includes(deliveryZone)) {
+    return res.status(400).json({ message: "deliveryZone must be inside or outside" });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const cart = await tx.cart.findUnique({
+        where: { userId },
+        include: {
+          items: {
+            include: {
+              product: true,
+              variant: true,
+            },
+          },
+        },
+      });
+
+      if (!cart || cart.items.length === 0) {
+        return { error: { status: 400, message: "cart is empty" } };
+      }
+
+      // re-check stock and compute totals
+      let subtotal = 0;
+
+      for (const item of cart.items) {
+        const qty = item.quantity;
+
+        if (item.variantId) {
+          const v = await tx.productVariant.findUnique({
+            where: { id: item.variantId },
+            select: { id: true, stock: true, price: true, name: true, productId: true },
+          });
+
+          if (!v) return { error: { status: 400, message: "variant not found" } };
+          if (v.productId !== item.productId) return { error: { status: 400, message: "variant mismatch" } };
+          if (v.stock < qty) return { error: { status: 400, message: "insufficient stock for variant" } };
+
+          subtotal += v.price * qty;
+        } else {
+          const p = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { id: true, baseStock: true, basePrice: true, name: true },
+          });
+
+          if (!p) return { error: { status: 400, message: "product not found" } };
+          if (p.baseStock < qty) return { error: { status: 400, message: "insufficient stock for product" } };
+
+          subtotal += p.basePrice * qty;
+        }
+      }
+
+      // MVP: discountTotal = 0 (we will add discount logic later)
+      const discountTotal = 0;
+
+      const settings = await getSettings(tx);
+      const deliveryFee =
+        deliveryZone === "inside" ? settings.deliveryFeeInside : settings.deliveryFeeOutside;
+
+      const total = subtotal - discountTotal + deliveryFee;
+
+      const orderNumber = generateOrderNumber();
+
+      const order = await tx.order.create({
+        data: {
+          orderNumber,
+          userId,
+          status: "Placed",
+          subtotal,
+          discountTotal,
+          deliveryFee,
+          total,
+          paymentMethod: "COD",
+          fullName,
+          phone,
+          addressLine,
+          area: area || null,
+          landmark: landmark || null,
+          city: city || "Kathmandu",
+          deliveryZone,
+          notes: notes || null,
+        },
+      });
+
+      // create order items and decrement stock
+      for (const item of cart.items) {
+        const qty = item.quantity;
+
+        if (item.variantId) {
+          const v = await tx.productVariant.findUnique({
+            where: { id: item.variantId },
+            select: { id: true, stock: true, price: true, name: true, productId: true },
+          });
+
+          if (!v || v.stock < qty) return { error: { status: 400, message: "insufficient stock" } };
+
+          await tx.orderItem.create({
+            data: {
+              orderId: order.id,
+              productId: item.productId,
+              variantId: item.variantId,
+              productName: item.product.name,
+              variantName: v.name,
+              unitPrice: v.price,
+              quantity: qty,
+              lineTotal: v.price * qty,
+            },
+          });
+
+          await tx.productVariant.update({
+            where: { id: v.id },
+            data: { stock: v.stock - qty },
+          });
+        } else {
+          const p = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { id: true, baseStock: true, basePrice: true, name: true },
+          });
+
+          if (!p || p.baseStock < qty) return { error: { status: 400, message: "insufficient stock" } };
+
+          await tx.orderItem.create({
+            data: {
+              orderId: order.id,
+              productId: item.productId,
+              variantId: null,
+              productName: p.name,
+              variantName: null,
+              unitPrice: p.basePrice,
+              quantity: qty,
+              lineTotal: p.basePrice * qty,
+            },
+          });
+
+          await tx.product.update({
+            where: { id: p.id },
+            data: { baseStock: p.baseStock - qty },
+          });
+        }
+      }
+
+      // clear cart
+      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+
+      const fullOrder = await tx.order.findUnique({
+        where: { id: order.id },
+        include: { items: true },
+      });
+
+      return { order: fullOrder };
+    });
+
+    if (result.error) {
+      return res.status(result.error.status).json({ message: result.error.message });
+    }
+    try {
+  const userRecord = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  });
+
+  await sendOrderEmails(result.order, userRecord?.email ?? null);
+} catch (emailErr) {
+  console.error("sendOrderEmails error:", emailErr);
+}
+
+    return res.status(201).json({ order: result.order });
+  } catch (error) {
+    console.error("placeOrder error:", error);
+    return res.status(500).json({ message: "internal server error" });
+  }
+};
+
+export const listMyOrders = async (req, res) => {
+  const userId = req.user.id;
+
+  const items = await prisma.order.findMany({
+    where: { userId },
+    orderBy: { placedAt: "desc" }, // better than createdAt for orders
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      total: true,
+      subtotal: true,
+      discountTotal: true,
+      deliveryFee: true,
+      placedAt: true,
+      deliveredAt: true,
+      cancelledAt: true,
+      items: { select: { id: true } }, // just count-able
+    },
+  });
+
+  res.json({ items });
+};
+
+
+export const getOrderById = async (req, res) => {
+  const userId = req.user.id;
+  const role = req.user.role;
+  const { id } = req.params;
+
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true },
+  });
+
+  if (!order) return res.status(404).json({ message: "order not found" });
+
+  // customer can only view their own; admin can view all
+  if (role !== "admin" && order.userId !== userId) {
+    return res.status(403).json({ message: "forbidden" });
+  }
+
+  res.json({ order });
+};
+
+================ backend\src\controllers\checkoutSession.controller.js ================
+
+import { prisma } from "../config/prisma.js";
+import { sendOrderEmails } from "../utils/orderEmail.js";
+
+const SESSION_TTL_MINUTES = 30;
+
+function isExpired(expiresAt) {
+  return new Date(expiresAt).getTime() <= Date.now();
+}
+
+async function getSettings(tx) {
+  const existing = await tx.storeSettings.findFirst();
+  if (existing) return existing;
+
+  return tx.storeSettings.create({
+    data: { deliveryFeeInside: 0, deliveryFeeOutside: 0 },
+  });
+}
+
+function computeDeliveryFee(settings, deliveryZone) {
+  if (!deliveryZone) return 0;
+  return deliveryZone === "inside" ? settings.deliveryFeeInside : settings.deliveryFeeOutside;
+}
+
+async function getAvailableStock(tx, productId, variantId) {
+  if (variantId) {
+    const v = await tx.productVariant.findUnique({
+      where: { id: variantId },
+      select: { id: true, stock: true, price: true, name: true, productId: true },
+    });
+    if (!v) return { ok: false, message: "variant not found" };
+    if (v.productId !== productId) return { ok: false, message: "variant does not belong to product" };
+    return { ok: true, stock: v.stock, unitPrice: v.price, variantName: v.name };
+  }
+
+  const p = await tx.product.findUnique({
+    where: { id: productId },
+    select: { id: true, baseStock: true, basePrice: true, name: true },
+  });
+  if (!p) return { ok: false, message: "product not found" };
+  return { ok: true, stock: p.baseStock, unitPrice: p.basePrice, variantName: null };
+}
+
+export const createCheckoutSession = async (req, res) => {
+  const userId = req.user.id;
+  const { cartItemIds, deliveryZone } = req.body;
+
+  if (!Array.isArray(cartItemIds) || cartItemIds.length === 0) {
+    return res.status(400).json({ message: "cartItemIds must be a non-empty array" });
+  }
+  if (deliveryZone && !["inside", "outside"].includes(deliveryZone)) {
+    return res.status(400).json({ message: "deliveryZone must be inside or outside" });
+  }
+
+  try {
+    const session = await prisma.$transaction(async (tx) => {
+      const cart = await tx.cart.findUnique({
+        where: { userId },
+        include: { items: true },
+      });
+
+      if (!cart) return { error: { status: 400, message: "cart not found" } };
+
+      const selected = cart.items.filter((it) => cartItemIds.includes(it.id));
+      if (selected.length === 0) return { error: { status: 400, message: "no valid cart items selected" } };
+
+      // Validate stock at session creation time (does NOT decrement stock)
+      const warnings = [];
+      for (const it of selected) {
+        const stockCheck = await getAvailableStock(tx, it.productId, it.variantId);
+        if (!stockCheck.ok) {
+          return { error: { status: 400, message: stockCheck.message } };
+        }
+        if (stockCheck.stock <= 0) {
+          return { error: { status: 400, message: "item out of stock" } };
+        }
+        if (it.quantity > stockCheck.stock) {
+          warnings.push({
+            cartItemId: it.id,
+            message: "quantity exceeds current stock (will be capped at confirm)",
+          });
+        }
+      }
+
+      // One active session per user: cancel existing active sessions
+      await tx.checkoutSession.updateMany({
+        where: { userId, status: "active" },
+        data: { status: "cancelled" },
+      });
+
+      const expiresAt = new Date(Date.now() + SESSION_TTL_MINUTES * 60 * 1000);
+
+      const created = await tx.checkoutSession.create({
+        data: {
+          userId,
+          status: "active",
+          deliveryZone: deliveryZone || null,
+          expiresAt,
+          items: {
+            create: selected.map((it) => ({
+              cartItemId: it.id,
+              productId: it.productId,
+              variantId: it.variantId,
+              quantity: it.quantity,
+            })),
+          },
+        },
+      });
+
+      return { session: created, warnings };
+    });
+
+    if (session.error) return res.status(session.error.status).json({ message: session.error.message });
+
+    return res.status(201).json({
+      sessionId: session.session.id,
+      expiresAt: session.session.expiresAt,
+      warnings: session.warnings || [],
+    });
+  } catch (err) {
+    console.error("createCheckoutSession error:", err);
+    return res.status(500).json({ message: "internal server error" });
+  }
+};
+
+export const getCheckoutSession = async (req, res) => {
+  const userId = req.user.id;
+  const { id } = req.params;
+
+  const session = await prisma.checkoutSession.findUnique({
+    where: { id },
+    include: {
+      items: {
+        include: {
+          product: { select: { id: true, name: true, slug: true, basePrice: true, baseStock: true } },
+          variant: { select: { id: true, name: true, price: true, stock: true } },
+          cartItem: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (!session) return res.status(404).json({ message: "checkout session not found" });
+  if (session.userId !== userId) return res.status(403).json({ message: "forbidden" });
+
+  // expire automatically if time passed
+  if (session.status === "active" && isExpired(session.expiresAt)) {
+    await prisma.checkoutSession.update({
+      where: { id: session.id },
+      data: { status: "expired" },
+    });
+    return res.status(400).json({ message: "checkout session expired" });
+  }
+
+  // compute totals preview
+  const settings = await prisma.storeSettings.findFirst();
+  const deliveryFee = settings ? computeDeliveryFee(settings, session.deliveryZone) : 0;
+
+  let subtotal = 0;
+  for (const it of session.items) {
+    const unitPrice = it.variantId ? (it.variant?.price ?? 0) : (it.product?.basePrice ?? 0);
+    subtotal += unitPrice * it.quantity;
+  }
+  const discountTotal = 0;
+  const total = subtotal - discountTotal + deliveryFee;
+
+  res.json({
+    session,
+    pricing: {
+      subtotal,
+      discountTotal,
+      deliveryFee,
+      total,
+    },
+  });
+};
+
+export const cancelCheckoutSession = async (req, res) => {
+  const userId = req.user.id;
+  const { id } = req.params;
+
+  const session = await prisma.checkoutSession.findUnique({ where: { id } });
+  if (!session) return res.status(404).json({ message: "checkout session not found" });
+  if (session.userId !== userId) return res.status(403).json({ message: "forbidden" });
+
+  if (session.status !== "active") {
+    return res.status(400).json({ message: "session is not active" });
+  }
+
+  await prisma.checkoutSession.update({
+    where: { id },
+    data: { status: "cancelled" },
+  });
+
+  res.json({ ok: true });
+};
+
+export const confirmCheckoutSession = async (req, res) => {
+  const userId = req.user.id;
+  const { id } = req.params;
+
+  const {
+    fullName,
+    phone,
+    addressLine,
+    area,
+    landmark,
+    city,
+    deliveryZone, // inside | outside
+    notes,
+  } = req.body;
+
+  if (!fullName || !phone || !addressLine || !deliveryZone) {
+    return res.status(400).json({ message: "fullName, phone, addressLine, deliveryZone are required" });
+  }
+  if (!["inside", "outside"].includes(deliveryZone)) {
+    return res.status(400).json({ message: "deliveryZone must be inside or outside" });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const session = await tx.checkoutSession.findUnique({
+        where: { id },
+        include: {
+          items: {
+            include: {
+              cartItem: true,
+              product: true,
+              variant: true,
+            },
+          },
+        },
+      });
+
+      if (!session) return { error: { status: 404, message: "checkout session not found" } };
+      if (session.userId !== userId) return { error: { status: 403, message: "forbidden" } };
+      if (session.status !== "active") return { error: { status: 400, message: "session is not active" } };
+      if (isExpired(session.expiresAt)) {
+        await tx.checkoutSession.update({ where: { id: session.id }, data: { status: "expired" } });
+        return { error: { status: 400, message: "checkout session expired" } };
+      }
+
+      if (!session.items.length) {
+        return { error: { status: 400, message: "session has no items" } };
+      }
+
+      // Re-check stock and compute subtotal (final gate)
+      let subtotal = 0;
+      const finalItems = [];
+
+      for (const it of session.items) {
+        const stockCheck = await getAvailableStock(tx, it.productId, it.variantId);
+        if (!stockCheck.ok) return { error: { status: 400, message: stockCheck.message } };
+
+        if (stockCheck.stock <= 0) {
+          return { error: { status: 400, message: "item out of stock" } };
+        }
+
+        const qty = Math.min(it.quantity, stockCheck.stock);
+        const unitPrice = stockCheck.unitPrice;
+        subtotal += unitPrice * qty;
+
+        finalItems.push({
+          sessionItemId: it.id,
+          cartItemId: it.cartItemId,
+          productId: it.productId,
+          variantId: it.variantId,
+          productName: it.product?.name || "Unknown",
+          variantName: stockCheck.variantName,
+          unitPrice,
+          quantity: qty,
+          lineTotal: unitPrice * qty,
+        });
+
+        // If qty had to be capped, update the session item quantity
+        if (qty !== it.quantity) {
+          await tx.checkoutSessionItem.update({
+            where: { id: it.id },
+            data: { quantity: qty },
+          });
+        }
+      }
+
+      const settings = await getSettings(tx);
+      const deliveryFee = computeDeliveryFee(settings, deliveryZone);
+      const discountTotal = 0;
+      const total = subtotal - discountTotal + deliveryFee;
+
+      // Create order
+      const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+      const order = await tx.order.create({
+        data: {
+          orderNumber,
+          userId,
+          status: "Placed",
+          subtotal,
+          discountTotal,
+          deliveryFee,
+          total,
+          paymentMethod: "COD",
+          fullName,
+          phone,
+          addressLine,
+          area: area || null,
+          landmark: landmark || null,
+          city: city || "Kathmandu",
+          deliveryZone,
+          notes: notes || null,
+        },
+      });
+
+      // Create order items + decrement stock
+      for (const fi of finalItems) {
+        await tx.orderItem.create({
+          data: {
+            orderId: order.id,
+            productId: fi.productId,
+            variantId: fi.variantId,
+            productName: fi.productName,
+            variantName: fi.variantName,
+            unitPrice: fi.unitPrice,
+            quantity: fi.quantity,
+            lineTotal: fi.lineTotal,
+          },
+        });
+
+        if (fi.variantId) {
+          const v = await tx.productVariant.findUnique({
+            where: { id: fi.variantId },
+            select: { id: true, stock: true },
+          });
+          if (!v || v.stock < fi.quantity) {
+            return { error: { status: 400, message: "insufficient stock during confirm" } };
+          }
+          await tx.productVariant.update({
+            where: { id: v.id },
+            data: { stock: v.stock - fi.quantity },
+          });
+        } else {
+          const p = await tx.product.findUnique({
+            where: { id: fi.productId },
+            select: { id: true, baseStock: true },
+          });
+          if (!p || p.baseStock < fi.quantity) {
+            return { error: { status: 400, message: "insufficient stock during confirm" } };
+          }
+          await tx.product.update({
+            where: { id: p.id },
+            data: { baseStock: p.baseStock - fi.quantity },
+          });
+        }
+      }
+
+      // Remove only ordered items from cart
+      await tx.cartItem.deleteMany({
+        where: { id: { in: finalItems.map((x) => x.cartItemId) } },
+      });
+
+      // Mark session completed and store delivery info in session
+      await tx.checkoutSession.update({
+        where: { id: session.id },
+        data: {
+          status: "completed",
+          deliveryZone,
+          fullName,
+          phone,
+          addressLine,
+          area: area || null,
+          landmark: landmark || null,
+          city: city || "Kathmandu",
+          notes: notes || null,
+        },
+      });
+
+      const fullOrder = await tx.order.findUnique({
+        where: { id: order.id },
+        include: { items: true },
+      });
+
+      return { order: fullOrder };
+    });
+
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+
+    // Send confirmation emails (non-blocking — never fail the response)
+   try {
+      const orderWithItems = result.order;
+      const userRecord = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+
+      console.log("About to send order emails");
+      console.log("Order ID:", orderWithItems?.id);
+      console.log("Customer email from DB:", userRecord?.email || null);
+      console.log("Admin email from env:", process.env.ADMIN_EMAIL || null);
+      console.log("MAIL_FROM:", process.env.MAIL_FROM || null);
+
+      await sendOrderEmails(orderWithItems, userRecord?.email ?? null);
+    } catch (emailErr) {
+      console.error("sendOrderEmails error:", emailErr);
+    }
+
+    return res.status(201).json({ order: result.order });
+  } catch (err) {
+    console.error("confirmCheckoutSession error:", err);
+    return res.status(500).json({ message: "internal server error" });
+  }
+};
+
+================ backend\src\routes\order.routes.js ================
+
+import { Router } from "express";
+import { requireAuth } from "../middleware/auth.middleware.js";
+import { placeOrder, listMyOrders, getOrderById } from "../controllers/order.controller.js";
+
+export const orderRoutes = Router();
+
+orderRoutes.post("/", requireAuth, placeOrder);
+orderRoutes.get("/my", requireAuth, listMyOrders);
+orderRoutes.get("/:id", requireAuth, getOrderById);
+
+================ backend\src\routes\checkoutSession.routes.js ================
+
+import { Router } from "express";
+import { requireAuth } from "../middleware/auth.middleware.js";
+import {
+  createCheckoutSession,
+  getCheckoutSession,
+  confirmCheckoutSession,
+  cancelCheckoutSession,
+} from "../controllers/checkoutSession.controller.js";
+
+export const checkoutSessionRoutes = Router();
+
+checkoutSessionRoutes.post("/", requireAuth, createCheckoutSession);
+checkoutSessionRoutes.get("/:id", requireAuth, getCheckoutSession);
+checkoutSessionRoutes.post("/:id/confirm", requireAuth, confirmCheckoutSession);
+checkoutSessionRoutes.post("/:id/cancel", requireAuth, cancelCheckoutSession);
+
+================ backend\src\routes\admin.routes.js ================
+
+import { Router } from "express";
+import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
+import { getAdminStats } from "../controllers/admin.controller.js";
+
+export const adminRoutes = Router();
+
+adminRoutes.get("/stats", requireAuth, requireRole("admin"), getAdminStats);
+
+================ backend\src\server.js ================
+
+import "./env.js";
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import compression from "compression";
+import morgan from "morgan";
+import path from "path";
+import { rateLimit } from "express-rate-limit";
+import { prisma } from "./config/prisma.js";
+import { errorHandler, notFound } from "./middleware/error.middleware.js";
+
+import { testRoutes } from "./routes/test.routes.js";
+import authRoutes from "./routes/auth.routes.js";
+import { meRoutes } from "./routes/me.routes.js";
+import { brandRoutes } from "./routes/brand.routes.js";
+import { categoryRoutes } from "./routes/category.routes.js";
+import { productRoutes } from "./routes/product.routes.js";
+import { cartRoutes } from "./routes/cart.routes.js";
+import { orderRoutes } from "./routes/order.routes.js";
+import { checkoutSessionRoutes } from "./routes/checkoutSession.routes.js";
+import { orderActionsRoutes } from "./routes/orderActions.routes.js";
+import profileRoutes from "./routes/profile.routes.js";
+import { adminRoutes } from "./routes/admin.routes.js";
+import { heroSlideRoutes } from "./routes/heroSlide.routes.js";
+import { storeInfoRoutes } from "./routes/storeInfo.routes.js";
+import { trendingProductRoutes } from "./routes/trendingProduct.route.js";
+import passwordResetRoutes from "./routes/passwordReset.routes.js";
+
+const app = express();
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const IS_PROD = process.env.NODE_ENV === "production";
+
+/* ── Security ── */
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+
+/* ── CORS ── */
+const allowedOrigins = IS_PROD
+  ? [FRONTEND_URL]
+  : [FRONTEND_URL, "http://localhost:3000", "http://localhost:5173"];
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error("Not allowed by CORS"));
+  },
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization"],
+  credentials: false,
+}));
+app.options("/{*splat}", cors());
+
+/* ── Compression & logging ── */
+app.use(compression());
+app.use(morgan(IS_PROD ? "combined" : "dev"));
+
+/* ── Body parsing ── */
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+/* ── Static uploads ── */
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+/* ── Rate limiters ── */
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: IS_PROD ? 200 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: IS_PROD ? 20 : 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many login attempts, please try again later." },
+});
+
+app.use("/api", globalLimiter);
+
+/* ── Health checks ── */
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, message: "Backend is running", env: process.env.NODE_ENV });
+});
+app.get("/health/db", async (_req, res, next) => {
+  try {
+    await prisma.$queryRaw`SELECT 1 as ok`;
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+/* ── API Routes ── */
+if (!IS_PROD) app.use("/api/test", testRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/me", meRoutes);
+app.use("/api/brands", brandRoutes);
+app.use("/api/categories", categoryRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/cart", cartRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/checkout-sessions", checkoutSessionRoutes);
+app.use("/api", orderActionsRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/hero-slides", heroSlideRoutes);
+app.use("/api/store-info", storeInfoRoutes);
+app.use("/api/trending-products", trendingProductRoutes);
+app.use("/api/password-reset", authLimiter, passwordResetRoutes);
+
+/* ── Error handlers ── */
+app.use(notFound);
+app.use(errorHandler);
+
+/* ── Start ── */
+const PORT = process.env.PORT || 5000;
+
+async function start() {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    console.log("✅ PostgreSQL connected");
+
+    const server = app.listen(PORT, () => {
+      console.log(`🚀 Server on http://localhost:${PORT} [${process.env.NODE_ENV}]`);
+    });
+
+    const shutdown = async (signal) => {
+      console.log(`\n${signal} received — shutting down gracefully...`);
+      server.close(async () => {
+        await prisma.$disconnect();
+        console.log("🛑 Server closed.");
+        process.exit(0);
+      });
+      setTimeout(() => process.exit(1), 10_000);
+    };
+
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
+    process.on("unhandledRejection", (r) => console.error("Unhandled Rejection:", r));
+    process.on("uncaughtException", (e) => { console.error("Uncaught Exception:", e); process.exit(1); });
+  } catch (error) {
+    console.error("❌ DB connection failed:", error.message);
+    process.exit(1);
+  }
+}
+
+start();
+
+================ frontend\src\pages\account\Checkout.jsx ================
+
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+
+const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+
+function getHeaders() {
+  const token = localStorage.getItem("token");
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+const money = (n) => `NPR ${Number(n || 0).toLocaleString("en-US")}`;
+
+/* ─── Step indicator ─── */
+function Steps({ step }) {
+  const steps = ["Select Items", "Delivery Details", "Confirm Order"];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 32 }}>
+      {steps.map((label, i) => {
+        const num = i + 1;
+        const done = step > num;
+        const active = step === num;
+        return (
+          <div key={label} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : undefined }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                background: done ? "#6BBF4E" : active ? "#1B3D6E" : "#e2e8f0",
+                color: done || active ? "#fff" : "#94a3b8",
+                fontWeight: 800, fontSize: 14, transition: "all .2s",
+              }}>
+                {done ? <i className="bi bi-check2" /> : num}
+              </div>
+              <span style={{ fontSize: 13.5, fontWeight: active ? 700 : 500, color: active ? "#1B3D6E" : done ? "#6BBF4E" : "#94a3b8" }}>
+                {label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div style={{ flex: 1, height: 2, background: done ? "#6BBF4E" : "#e2e8f0", margin: "0 12px", transition: "background .3s" }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── Price summary sidebar ─── */
+function PriceSummary({ items, deliveryFee, deliveryZone, loading }) {
+  const subtotal = items.reduce((sum, it) => {
+    const price = it.variant ? it.variant.price : it.product.basePrice;
+    return sum + price * it.quantity;
+  }, 0);
+  const total = subtotal + (deliveryZone ? deliveryFee : 0);
+
+  return (
+    <div style={{
+      background: "#fff", border: "1.5px solid #e2e8f0",
+      borderRadius: 16, padding: "24px", position: "sticky", top: 24,
+    }}>
+      <h3 style={{ fontSize: 15, fontWeight: 800, color: "#1B3D6E", marginBottom: 20 }}>Order Summary</h3>
+
+      <div style={{ maxHeight: 240, overflowY: "auto", marginBottom: 16 }}>
+        {items.map((it) => {
+          const price = it.variant ? it.variant.price : it.product.basePrice;
+          return (
+            <div key={it.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 13.5 }}>
+              <div style={{ color: "#475569", flex: 1, marginRight: 8 }}>
+                <span style={{ fontWeight: 600, color: "#1e293b" }}>{it.product.name}</span>
+                {it.variant && <span style={{ color: "#94a3b8" }}> · {it.variant.name}</span>}
+                <span style={{ color: "#94a3b8" }}> ×{it.quantity}</span>
+              </div>
+              <div style={{ fontWeight: 700, color: "#1B3D6E", flexShrink: 0 }}>{money(price * it.quantity)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#64748b" }}>
+          <span>Subtotal</span>
+          <span style={{ fontWeight: 600 }}>{money(subtotal)}</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#64748b" }}>
+          <span>Delivery fee</span>
+          {loading ? (
+            <span style={{ color: "#94a3b8" }}>calculating…</span>
+          ) : !deliveryZone ? (
+            <span style={{ color: "#94a3b8" }}>select zone</span>
+          ) : (
+            <span style={{ fontWeight: 600, color: deliveryFee === 0 ? "#6BBF4E" : "#1e293b" }}>
+              {deliveryFee === 0 ? "Free" : money(deliveryFee)}
+            </span>
+          )}
+        </div>
+        <div style={{
+          display: "flex", justifyContent: "space-between",
+          borderTop: "2px solid #e2e8f0", paddingTop: 12, marginTop: 4,
+        }}>
+          <span style={{ fontWeight: 800, fontSize: 15, color: "#1B3D6E" }}>Total</span>
+          <span style={{ fontWeight: 800, fontSize: 18, color: "#1B3D6E" }}>{money(total)}</span>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 16, padding: "10px 14px", background: "#F0FDF4", borderRadius: 8, fontSize: 12, color: "#15803d" }}>
+        <i className="bi bi-shield-fill-check me-2" />Payment on delivery (COD)
+      </div>
+    </div>
+  );
+}
+
+/* ─── STEP 1: Item selection ─── */
+function StepSelectItems({ cartItems, selected, onToggle, onToggleAll, onNext }) {
+  const allSelected = cartItems.length > 0 && selected.size === cartItems.length;
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1B3D6E", marginBottom: 4 }}>Select Items to Checkout</h2>
+      <p style={{ color: "#64748b", fontSize: 14, marginBottom: 20 }}>Choose which cart items you want to include in this order.</p>
+
+      <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+        {/* Select all header */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "14px 20px", background: "#f8fafc",
+          borderBottom: "1px solid #e2e8f0", cursor: "pointer",
+        }} onClick={onToggleAll}>
+          <div style={{
+            width: 20, height: 20, borderRadius: 5,
+            border: `2px solid ${allSelected ? "#1B3D6E" : "#cbd5e1"}`,
+            background: allSelected ? "#1B3D6E" : "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
+            {allSelected && <i className="bi bi-check2" style={{ color: "#fff", fontSize: 12 }} />}
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>
+            Select all ({cartItems.length} items)
+          </span>
+        </div>
+
+        {/* Items */}
+        {cartItems.map((item) => {
+          const price = item.variant ? item.variant.price : item.product.basePrice;
+          const isChecked = selected.has(item.id);
+          const img = item.product.images?.[0]?.url;
+
+          return (
+            <div
+              key={item.id}
+              onClick={() => onToggle(item.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: "16px 20px",
+                borderBottom: "1px solid #f1f5f9",
+                cursor: "pointer",
+                background: isChecked ? "#f0f6ff" : "#fff",
+                transition: "background .15s",
+              }}
+            >
+              {/* Checkbox */}
+              <div style={{
+                width: 20, height: 20, borderRadius: 5,
+                border: `2px solid ${isChecked ? "#1B3D6E" : "#cbd5e1"}`,
+                background: isChecked ? "#1B3D6E" : "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}>
+                {isChecked && <i className="bi bi-check2" style={{ color: "#fff", fontSize: 12 }} />}
+              </div>
+
+              {/* Image */}
+              <div style={{
+                width: 52, height: 52, borderRadius: 8, flexShrink: 0,
+                background: "linear-gradient(135deg,#EEF2F8,#E8F5E2)",
+                overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {img
+                  ? <img src={img} alt={item.product.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <i className="bi bi-box-seam" style={{ color: "#1B3D6E", fontSize: 20 }} />
+                }
+              </div>
+
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: "#1e293b", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {item.product.name}
+                </div>
+                {item.variant && <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{item.variant.name}</div>}
+                <div style={{ fontSize: 13, color: "#1B3D6E", fontWeight: 700, marginTop: 4 }}>
+                  {money(price)} × {item.quantity}
+                </div>
+              </div>
+
+              {/* Line total */}
+              <div style={{ fontWeight: 800, fontSize: 15, color: "#1B3D6E", flexShrink: 0 }}>
+                {money(price * item.quantity)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
+        <button
+          onClick={onNext}
+          disabled={selected.size === 0}
+          style={{
+            padding: "12px 28px", borderRadius: 10,
+            background: selected.size === 0 ? "#e2e8f0" : "#1B3D6E",
+            color: selected.size === 0 ? "#94a3b8" : "#fff",
+            border: "none", fontWeight: 800, fontSize: 14, cursor: selected.size === 0 ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", gap: 8,
+          }}
+        >
+          Continue to Delivery <i className="bi bi-arrow-right" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── STEP 2: Delivery form ─── */
+const ZONE_OPTIONS = [
+  { value: "inside", label: "Inside Ring Road", sub: "Thamel, Baluwatar, Lazimpat, Naxal, New Baneshwor, etc." },
+  { value: "outside", label: "Outside Ring Road", sub: "Bhaktapur, Lalitpur, Budhanilkantha, Tokha, Jorpati, etc." },
+];
+
+function StepDelivery({ form, onChange, deliveryFee, settingsLoading, onBack, onNext }) {
+  const inputStyle = {
+    width: "100%", padding: "10px 14px", borderRadius: 9, fontSize: 14,
+    border: "1.5px solid #e2e8f0", outline: "none", background: "#fff",
+    fontFamily: "inherit", boxSizing: "border-box", color: "#1e293b",
+  };
+  const labelStyle = { fontSize: 12.5, fontWeight: 700, color: "#475569", marginBottom: 6, display: "block" };
+
+  const valid = form.fullName && form.phone && form.addressLine && form.deliveryZone;
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1B3D6E", marginBottom: 4 }}>Delivery Details</h2>
+      <p style={{ color: "#64748b", fontSize: 14, marginBottom: 24 }}>Where should we deliver your order?</p>
+
+      {/* Zone picker */}
+      <div style={{ marginBottom: 24 }}>
+        <label style={labelStyle}>Delivery Zone <span style={{ color: "#ef4444" }}>*</span></label>
+        <div style={{ display: "flex", gap: 12 }}>
+          {ZONE_OPTIONS.map((z) => {
+            const active = form.deliveryZone === z.value;
+            return (
+              <div
+                key={z.value}
+                onClick={() => onChange("deliveryZone", z.value)}
+                style={{
+                  flex: 1, padding: "14px 16px", borderRadius: 10, cursor: "pointer",
+                  border: `2px solid ${active ? "#1B3D6E" : "#e2e8f0"}`,
+                  background: active ? "#EEF2F8" : "#fff",
+                  transition: "all .15s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: "50%",
+                    border: `2px solid ${active ? "#1B3D6E" : "#cbd5e1"}`,
+                    background: active ? "#1B3D6E" : "#fff",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {active && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} />}
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: 13.5, color: active ? "#1B3D6E" : "#475569" }}>{z.label}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: "#94a3b8", marginLeft: 26 }}>{z.sub}</div>
+                {!settingsLoading && form.deliveryZone === z.value && (
+                  <div style={{ marginTop: 8, marginLeft: 26, fontSize: 12.5, fontWeight: 700, color: "#1B3D6E" }}>
+                    <i className="bi bi-truck me-1" />Delivery: {deliveryFee === 0 ? "Free" : money(deliveryFee)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Name & phone */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div>
+          <label style={labelStyle}>Full Name <span style={{ color: "#ef4444" }}>*</span></label>
+          <input
+            style={inputStyle}
+            value={form.fullName}
+            onChange={(e) => onChange("fullName", e.target.value)}
+            placeholder="Your full name"
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>Phone <span style={{ color: "#ef4444" }}>*</span></label>
+          <input
+            style={inputStyle}
+            value={form.phone}
+            onChange={(e) => onChange("phone", e.target.value)}
+            placeholder="98XXXXXXXX"
+          />
+        </div>
+      </div>
+
+      {/* Address */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={labelStyle}>Address Line <span style={{ color: "#ef4444" }}>*</span></label>
+        <input
+          style={inputStyle}
+          value={form.addressLine}
+          onChange={(e) => onChange("addressLine", e.target.value)}
+          placeholder="Street / building number"
+        />
+      </div>
+
+      {/* Area & Landmark */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div>
+          <label style={labelStyle}>Area / Locality</label>
+          <input
+            style={inputStyle}
+            value={form.area}
+            onChange={(e) => onChange("area", e.target.value)}
+            placeholder="e.g. Thamel"
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>Landmark</label>
+          <input
+            style={inputStyle}
+            value={form.landmark}
+            onChange={(e) => onChange("landmark", e.target.value)}
+            placeholder="Near landmark"
+          />
+        </div>
+      </div>
+
+      {/* City & Notes */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={labelStyle}>City</label>
+        <input
+          style={{ ...inputStyle, background: "#f8fafc", color: "#94a3b8" }}
+          value="Kathmandu"
+          readOnly
+        />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <label style={labelStyle}>Order Notes (optional)</label>
+        <textarea
+          style={{ ...inputStyle, resize: "vertical", minHeight: 72 }}
+          value={form.notes}
+          onChange={(e) => onChange("notes", e.target.value)}
+          placeholder="Any special instructions for delivery…"
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: 12, justifyContent: "space-between" }}>
+        <button
+          onClick={onBack}
+          style={{
+            padding: "12px 22px", borderRadius: 10, border: "1.5px solid #e2e8f0",
+            background: "#fff", color: "#475569", fontWeight: 700, fontSize: 14, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <i className="bi bi-arrow-left" /> Back
+        </button>
+        <button
+          onClick={onNext}
+          disabled={!valid}
+          style={{
+            padding: "12px 28px", borderRadius: 10,
+            background: valid ? "#1B3D6E" : "#e2e8f0",
+            color: valid ? "#fff" : "#94a3b8",
+            border: "none", fontWeight: 800, fontSize: 14, cursor: valid ? "pointer" : "not-allowed",
+            display: "flex", alignItems: "center", gap: 8,
+          }}
+        >
+          Review Order <i className="bi bi-arrow-right" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── STEP 3: Confirm ─── */
+function StepConfirm({ form, selectedItems, deliveryFee, submitting, onBack, onConfirm }) {
+  const subtotal = selectedItems.reduce((sum, it) => {
+    const price = it.variant ? it.variant.price : it.product.basePrice;
+    return sum + price * it.quantity;
+  }, 0);
+  const total = subtotal + deliveryFee;
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1B3D6E", marginBottom: 4 }}>Review & Confirm</h2>
+      <p style={{ color: "#64748b", fontSize: 14, marginBottom: 24 }}>Please review your order before placing it.</p>
+
+      {/* Items */}
+      <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "20px", marginBottom: 16 }}>
+        <div style={{ fontWeight: 800, color: "#1B3D6E", marginBottom: 14, fontSize: 14 }}>
+          Items ({selectedItems.length})
+        </div>
+        {selectedItems.map((it) => {
+          const price = it.variant ? it.variant.price : it.product.basePrice;
+          return (
+            <div key={it.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 13.5 }}>
+              <div>
+                <span style={{ fontWeight: 600 }}>{it.product.name}</span>
+                {it.variant && <span style={{ color: "#94a3b8" }}> · {it.variant.name}</span>}
+                <span style={{ color: "#94a3b8" }}> ×{it.quantity}</span>
+              </div>
+              <div style={{ fontWeight: 700, color: "#1B3D6E" }}>{money(price * it.quantity)}</div>
+            </div>
+          );
+        })}
+        <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 12, marginTop: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#64748b", marginBottom: 6 }}>
+            <span>Subtotal</span><span>{money(subtotal)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#64748b", marginBottom: 6 }}>
+            <span>Delivery</span><span>{deliveryFee === 0 ? "Free" : money(deliveryFee)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 15, color: "#1B3D6E" }}>
+            <span>Total</span><span>{money(total)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Address summary */}
+      <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "20px", marginBottom: 24 }}>
+        <div style={{ fontWeight: 800, color: "#1B3D6E", marginBottom: 12, fontSize: 14 }}>Delivery Details</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px", fontSize: 13.5, color: "#475569" }}>
+          {[
+            ["Name", form.fullName],
+            ["Phone", form.phone],
+            ["Address", form.addressLine],
+            ["Area", form.area || "-"],
+            ["Landmark", form.landmark || "-"],
+            ["City", "Kathmandu"],
+            ["Zone", form.deliveryZone === "inside" ? "Inside Ring Road" : "Outside Ring Road"],
+            ["Payment", "Cash on Delivery"],
+          ].map(([k, v]) => (
+            <div key={k}>
+              <span style={{ color: "#94a3b8", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</span>
+              <div style={{ fontWeight: 600, color: "#1e293b" }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        {form.notes && (
+          <div style={{ marginTop: 12, padding: "10px 12px", background: "#f8fafc", borderRadius: 8, fontSize: 13 }}>
+            <span style={{ color: "#94a3b8", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase" }}>Notes</span>
+            <div style={{ color: "#475569", marginTop: 2 }}>{form.notes}</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 12, justifyContent: "space-between" }}>
+        <button
+          onClick={onBack}
+          disabled={submitting}
+          style={{
+            padding: "12px 22px", borderRadius: 10, border: "1.5px solid #e2e8f0",
+            background: "#fff", color: "#475569", fontWeight: 700, fontSize: 14,
+            cursor: submitting ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <i className="bi bi-arrow-left" /> Back
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={submitting}
+          style={{
+            padding: "12px 32px", borderRadius: 10,
+            background: submitting ? "#94a3b8" : "#6BBF4E",
+            color: "#fff", border: "none", fontWeight: 800, fontSize: 15,
+            cursor: submitting ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", gap: 10,
+          }}
+        >
+          {submitting
+            ? <><i className="bi bi-arrow-repeat" style={{ animation: "spin 1s linear infinite" }} /> Placing order…</>
+            : <><i className="bi bi-bag-check-fill" /> Place Order</>
+          }
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── MAIN CHECKOUT PAGE ─── */
+export default function Checkout() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const [step, setStep] = useState(1);
+  const [cartItems, setCartItems] = useState([]);
+  const [cartLoading, setCartLoading] = useState(true);
+
+  // Step 1: selected item IDs
+  const [selected, setSelected] = useState(new Set());
+
+  // Step 2: delivery form
+  const [form, setForm] = useState({
+    fullName: user?.name || "",
+    phone: "",
+    addressLine: "",
+    area: "",
+    landmark: "",
+    notes: "",
+    deliveryZone: "",
+  });
+
+  // Settings (delivery fees)
+  const [settings, setSettings] = useState(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+
+  // Session
+  const [sessionId, setSessionId] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
+
+  // Submit
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  /* ── Load cart ── */
+  useEffect(() => {
+    if (!user) { navigate("/login"); return; }
+
+    async function loadCart() {
+      setCartLoading(true);
+      try {
+        const res = await fetch(`${API}/cart`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to load cart");
+        const items = data.cart?.items || [];
+        setCartItems(items);
+        // Pre-select all items
+        setSelected(new Set(items.map((it) => it.id)));
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setCartLoading(false);
+      }
+    }
+
+    loadCart();
+  }, [user, navigate]);
+
+  /* ── Load delivery settings ── */
+  useEffect(() => {
+    async function loadSettings() {
+      setSettingsLoading(true);
+      try {
+        const res = await fetch(`${API}/settings/store`);
+        const data = await res.json();
+        setSettings(data.settings);
+      } catch {
+        // silently fail — user will see "select zone" until fee shows
+      } finally {
+        setSettingsLoading(false);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  const deliveryFee = settings && form.deliveryZone
+    ? (form.deliveryZone === "inside" ? settings.deliveryFeeInside : settings.deliveryFeeOutside)
+    : 0;
+
+  const selectedItems = cartItems.filter((it) => selected.has(it.id));
+
+  /* ── Handlers ── */
+  function toggleItem(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selected.size === cartItems.length) setSelected(new Set());
+    else setSelected(new Set(cartItems.map((it) => it.id)));
+  }
+
+  function handleFormChange(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  /* ── Step 1 → 2: create checkout session ── */
+  async function handleStep1Next() {
+    setError("");
+    setSessionLoading(true);
+    try {
+      const body = {
+        cartItemIds: [...selected],
+        deliveryZone: form.deliveryZone || undefined,
+      };
+      const res = await fetch(`${API}/checkout-sessions`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to create checkout session");
+      setSessionId(data.sessionId);
+      setStep(2);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSessionLoading(false);
+    }
+  }
+
+  /* ── Step 3: confirm order ── */
+  async function handleConfirm() {
+    if (!sessionId) return;
+    setError("");
+    setSubmitting(true);
+    try {
+      const body = {
+        fullName: form.fullName,
+        phone: form.phone,
+        addressLine: form.addressLine,
+        area: form.area || undefined,
+        landmark: form.landmark || undefined,
+        city: "Kathmandu",
+        deliveryZone: form.deliveryZone,
+        notes: form.notes || undefined,
+      };
+      const res = await fetch(`${API}/checkout-sessions/${sessionId}/confirm`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to place order");
+      navigate(`/orders/${data.order.id}`, { state: { justPlaced: true } });
+    } catch (e) {
+      setError(e.message);
+      setSubmitting(false);
+    }
+  }
+
+  /* ── Render ── */
+  if (!user) return null;
+
+  if (cartLoading) {
+    return (
+      <div style={{ background: "#f6f7fb", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 15 }}>
+          <i className="bi bi-arrow-repeat" style={{ animation: "spin 1s linear infinite", marginRight: 8 }} />
+          Loading your cart…
+        </div>
+        <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
+
+  if (cartItems.length === 0) {
+    return (
+      <div style={{ background: "#f6f7fb", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center" }}>
+          <i className="bi bi-cart-x" style={{ fontSize: 48, color: "#cbd5e1", marginBottom: 16, display: "block" }} />
+          <div style={{ fontWeight: 700, color: "#475569", marginBottom: 8 }}>Your cart is empty</div>
+          <Link to="/products" style={{ color: "#1B3D6E", fontWeight: 600 }}>Browse products</Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: "#f6f7fb", minHeight: "100vh" }}>
+      <div className="container py-5" style={{ maxWidth: 1060 }}>
+        {/* Page header */}
+        <div style={{ marginBottom: 24 }}>
+          <Link to="/cart" style={{ color: "#64748b", fontSize: 13.5, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <i className="bi bi-arrow-left" /> Back to cart
+          </Link>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: "#1B3D6E", marginTop: 8, marginBottom: 0 }}>
+            <i className="bi bi-bag-check me-2" />Checkout
+          </h1>
+        </div>
+
+        {/* Step indicator */}
+        <Steps step={step} />
+
+        {error && (
+          <div style={{
+            padding: "12px 16px", borderRadius: 8, marginBottom: 20,
+            background: "#FEF2F2", color: "#b91c1c", border: "1px solid #fecaca", fontSize: 13.5,
+          }}>
+            <i className="bi bi-exclamation-circle me-2" />{error}
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 24, alignItems: "start" }}>
+          {/* Main content */}
+          <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 16, padding: "28px 28px" }}>
+            {step === 1 && (
+              <StepSelectItems
+                cartItems={cartItems}
+                selected={selected}
+                onToggle={toggleItem}
+                onToggleAll={toggleAll}
+                onNext={handleStep1Next}
+              />
+            )}
+            {step === 2 && (
+              <StepDelivery
+                form={form}
+                onChange={handleFormChange}
+                deliveryFee={deliveryFee}
+                settingsLoading={settingsLoading}
+                onBack={() => setStep(1)}
+                onNext={() => setStep(3)}
+              />
+            )}
+            {step === 3 && (
+              <StepConfirm
+                form={form}
+                selectedItems={selectedItems}
+                deliveryFee={deliveryFee}
+                submitting={submitting}
+                onBack={() => setStep(2)}
+                onConfirm={handleConfirm}
+              />
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <PriceSummary
+            items={selectedItems}
+            deliveryFee={deliveryFee}
+            deliveryZone={form.deliveryZone}
+            loading={settingsLoading}
+          />
+        </div>
+      </div>
+
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
+
+================ frontend\src\pages\admin\Settings.jsx ================
+
+// pages/admin/Settings.jsx
+// Route: /admin/settings  (index/landing page for all settings)
+
+import { Link } from "react-router-dom";
+
+const settingsSections = [
+  {
+    href: "/admin/settings/hero-slides",
+    icon: "bi-images",
+    color: "#6BBF4E",
+    bg: "#F0FDF4",
+    border: "#bbf7d0",
+    title: "Hero Slides",
+    desc: "Manage the homepage hero carousel — add, edit, reorder, or hide slides. Control headlines, buttons, featured products, colours, and offer pills.",
+  },
+
+  /* {
+    href: "/admin/settings/store-info",
+    icon: "bi-shop",
+    color: "#1B3D6E",
+    bg: "#EEF2F8",
+    border: "#bfdbfe",
+    title: "Store Info",
+    desc: "Control footer content, About page, contact details, social links, opening hours, and newsletter settings.",
+  }, */
+  // ── Add more settings cards here in the future, e.g.:
+  // {
+  //   href: "/admin/settings/store",
+  //   icon: "bi-shop",
+  //   color: "#1B3D6E",
+  //   bg: "#EEF2F8",
+  //   border: "#bfdbfe",
+  //   title: "Store Settings",
+  //   desc: "Delivery fees, return window, cancellation policy.",
+  // },
+];
+
+export default function Settings() {
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 32 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1B3D6E", margin: 0 }}>Settings</h1>
+        <p style={{ color: "#64748b", fontSize: 14, marginTop: 6 }}>
+          Configure your store's content, appearance, and behaviour.
+        </p>
+      </div>
+
+      {/* Cards grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+        {settingsSections.map((s) => (
+          <Link
+            key={s.href}
+            to={s.href}
+            style={{ textDecoration: "none" }}
+          >
+            <div
+              style={{
+                background: "#fff",
+                border: "1.5px solid #e2e8f0",
+                borderRadius: 14,
+                padding: "24px 22px",
+                transition: "box-shadow .18s, border-color .18s, transform .18s",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = "0 8px 24px rgba(27,61,110,.10)";
+                e.currentTarget.style.borderColor = s.border;
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = "none";
+                e.currentTarget.style.borderColor = "#e2e8f0";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              {/* Icon */}
+              <div
+                style={{
+                  width: 48, height: 48, borderRadius: 12,
+                  background: s.bg,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  marginBottom: 16,
+                }}
+              >
+                <i className={`bi ${s.icon}`} style={{ fontSize: 22, color: s.color }} />
+              </div>
+
+              {/* Text */}
+              <div style={{ fontWeight: 800, fontSize: 15, color: "#1B3D6E", marginBottom: 6 }}>
+                {s.title}
+              </div>
+              <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
+                {s.desc}
+              </div>
+
+              {/* Arrow */}
+              <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 4, color: s.color, fontSize: 13, fontWeight: 700 }}>
+                Manage <i className="bi bi-arrow-right" />
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+================ frontend\src\layouts\AdminLayout.jsx ================
+
+import { useState } from "react";
+import { Outlet, NavLink, Link, useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+
+export default function AdminLayout() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, logout } = useAuth();
+
+  const [settingsOpen, setSettingsOpen] = useState(
+    location.pathname.startsWith("/admin/settings")
+  );
+
+  const onLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
+  const navLinkClass = ({ isActive }) =>
+    `nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 ${
+      isActive ? "bg-primary text-white" : "text-white-50"
+    }`;
+
+  const subLinkClass = ({ isActive }) =>
+    `nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 ms-3 ${
+      isActive ? "text-white fw-semibold" : "text-white-50"
+    }`;
+
+  const isSettingsActive = location.pathname.startsWith("/admin/settings");
+
+  return (
+    <div className="d-flex" style={{ minHeight: "100vh", background: "#f6f7fb" }}>
+      {/* Sidebar */}
+      <aside
+        className="text-white d-flex flex-column"
+        style={{
+          width: 270,
+          background: "linear-gradient(180deg, #0b1320 0%, #0d1b2a 100%)",
+          borderRight: "1px solid rgba(255,255,255,.08)",
+        }}
+      >
+        {/* Brand */}
+        <div className="p-3 border-bottom" style={{ borderColor: "rgba(255,255,255,.08)" }}>
+          <div className="d-flex align-items-center justify-content-between">
+            <div>
+              <div className="fw-bold" style={{ letterSpacing: ".2px" }}>MediSuite</div>
+              <div className="small text-white-50">Admin Panel</div>
+            </div>
+            <Link
+              to="/"
+              className="btn btn-sm btn-outline-light"
+              title="Go to website"
+              style={{ borderColor: "rgba(255,255,255,.25)" }}
+            >
+              Website
+            </Link>
+          </div>
+        </div>
+
+        {/* User */}
+        <div className="p-3">
+          <div className="d-flex align-items-center gap-3">
+            <div
+              className="rounded-circle d-flex align-items-center justify-content-center"
+              style={{
+                width: 42, height: 42,
+                background: "rgba(255,255,255,.12)",
+                border: "1px solid rgba(255,255,255,.15)",
+                fontWeight: 700,
+              }}
+            >
+              {(user?.name?.[0] || "A").toUpperCase()}
+            </div>
+            <div className="flex-grow-1">
+              <div className="fw-semibold">{user?.name || "Admin"}</div>
+              <div className="small text-white-50">{user?.email || "admin"}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Nav */}
+        <nav className="px-2 pb-3 flex-grow-1" style={{ overflowY: "auto" }}>
+          <div className="small text-white-50 px-3 mb-2">MANAGE</div>
+
+          <NavLink to="/admin" end className={navLinkClass}>
+            <i className="bi bi-grid-1x2" /> <span>Dashboard</span>
+          </NavLink>
+
+          <NavLink to="/admin/brands" className={navLinkClass}>
+            <i className="bi bi-award" /> <span>Brands</span>
+          </NavLink>
+
+          <NavLink to="/admin/categories" className={navLinkClass}>
+            <i className="bi bi-tags" /> <span>Categories</span>
+          </NavLink>
+
+          <NavLink to="/admin/products" className={navLinkClass}>
+            <i className="bi bi-box-seam" /> <span>Products</span>
+          </NavLink>
+          
+
+          <NavLink to="/admin/orders" className={navLinkClass}>
+            <i className="bi bi-receipt" /> <span>Orders</span>
+          </NavLink>
+
+          {/* ── Settings dropdown ── */}
+          <div style={{ marginTop: 4 }}>
+            <button
+              onClick={() => setSettingsOpen((o) => !o)}
+              className="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 w-100 border-0 text-start"
+              style={{
+                background: isSettingsActive ? "rgba(255,255,255,.08)" : "transparent",
+                color: isSettingsActive ? "#fff" : "rgba(255,255,255,.5)",
+                cursor: "pointer",
+              }}
+            >
+              <i className="bi bi-gear" />
+              <span className="flex-grow-1">Settings</span>
+              <i className={`bi bi-chevron-${settingsOpen ? "up" : "down"}`} style={{ fontSize: 11 }} />
+            </button>
+
+
+            {settingsOpen && (
+              <div style={{ marginTop: 2 }}>
+                <NavLink to="/admin/settings/hero-slides" className={subLinkClass}>
+                  <i className="bi bi-images" /> <span>Hero Slides</span>
+                </NavLink>
+                <NavLink to="/admin/settings/store-info" className={subLinkClass}>
+                  <i className="bi bi-shop" /> <span>Store Info</span>
+                </NavLink>
+                <NavLink to="/admin/settings/trending-products" className={subLinkClass}>
+                  <i className="bi bi-stars" /> <span>Trending Products</span>
+                </NavLink>
+              </div>
+            )}
+          </div>
+        </nav>
+
+        {/* Footer */}
+        <div className="p-3 border-top" style={{ borderColor: "rgba(255,255,255,.08)" }}>
+          <button
+            onClick={onLogout}
+            className="btn btn-outline-light w-100"
+            style={{ borderColor: "rgba(255,255,255,.25)" }}
+          >
+            Logout
+          </button>
+          <div className="small text-white-50 mt-3 text-center">
+            © {new Date().getFullYear()} MediSuite
+          </div>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <div className="flex-grow-1 d-flex flex-column">
+        <header className="bg-white border-bottom">
+          <div className="container-fluid py-3 d-flex align-items-center justify-content-between">
+            <div className="fw-semibold">Admin Dashboard</div>
+            <div className="d-flex align-items-center gap-2">
+              <span className="badge text-bg-light border">Role: {user?.role || "admin"}</span>
+            </div>
+          </div>
+        </header>
+
+        <main className="container-fluid py-4 flex-grow-1">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+}
+
+================ frontend\src\routes\AppRoutes.jsx ================
+
+import { lazy, Suspense } from "react";
+import { Routes, Route } from "react-router-dom";
+import Loader from "../components/common/Loader.jsx";
+
+import PublicLayout from "../layouts/PublicLayout";
+import AccountLayout from "../layouts/AccountLayout";
+import AdminLayout from "../layouts/AdminLayout";
+import AuthLayout from "../layouts/AuthLayout";
+import ProtectedRoute from "../components/common/ProtectedRoute";
+import AdminRoute from "../components/common/AdminRoute";
+import NotFound from "../pages/NotFound";
+
+/* ── Public (eager) ── */
+import Home from "../pages/public/Home";
+import ProductList from "../pages/public/ProductList";
+import ProductDetail from "../pages/public/ProductDetail";
+import About from "../pages/public/About";
+import Contact from "../pages/public/Contact";
+import BrandList from "../pages/public/BrandList";
+import BrandDetail from "../pages/public/BrandDetail";
+import ForgotPassword from "../pages/ForgotPassword";
+import ResetPassword from "../pages/ResetPassword";
+
+/* ── Auth ── */
+import Login from "../pages/account/Login";
+import Register from "../pages/account/Register";
+
+/* ── Account (lazy) ── */
+const Cart = lazy(() => import("../pages/account/Cart"));
+const Checkout = lazy(() => import("../pages/account/Checkout"));
+const Orders = lazy(() => import("../pages/account/Orders"));
+const OrderDetail = lazy(() => import("../pages/account/OrderDetail"));
+const Profile = lazy(() => import("../pages/account/Profile"));
+
+/* ── Admin (lazy) ── */
+const AdminDashboard = lazy(() => import("../pages/admin/Dashboard"));
+const Brands = lazy(() => import("../pages/admin/Brands"));
+const AdminCategories = lazy(() => import("../pages/admin/Categories"));
+const AdminProducts = lazy(() => import("../pages/admin/Products"));
+const AdminOrders = lazy(() => import("../pages/admin/Orders"));
+const AdminOrderDetail = lazy(() => import("../pages/admin/OrderDetail"));
+const Settings = lazy(() => import("../pages/admin/Settings"));
+const HeroSlides = lazy(() => import("../pages/admin/HeroSlides"));
+const StoreInfoSettings = lazy(() => import("../pages/admin/StoreInfoSettings"));
+const TrendingProducts = lazy(() => import("../pages/admin/TrendingProducts"));
+
+const Spinner = () => <Loader fullPage />;
+
+export default function AppRoutes() {
+  return (
+    <Routes>
+      {/* ── Public ── */}
+      <Route element={<PublicLayout />}>
+        <Route path="/" element={<Home />} />
+        <Route path="/products" element={<ProductList />} />
+        <Route path="/products/:slug" element={<ProductDetail />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/brands" element={<BrandList />} />
+        <Route path="/brands/:slug" element={<BrandDetail />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+      </Route>
+
+      {/* ── Auth ── */}
+      <Route element={<AuthLayout />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+      </Route>
+
+      {/* ── Protected Account ── */}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AccountLayout />}>
+          <Route path="/profile" element={<Suspense fallback={<Spinner />}><Profile /></Suspense>} />
+          <Route path="/cart" element={<Suspense fallback={<Spinner />}><Cart /></Suspense>} />
+          <Route path="/checkout" element={<Suspense fallback={<Spinner />}><Checkout /></Suspense>} />
+          <Route path="/orders" element={<Suspense fallback={<Spinner />}><Orders /></Suspense>} />
+          <Route path="/orders/:id" element={<Suspense fallback={<Spinner />}><OrderDetail /></Suspense>} />
+        </Route>
+      </Route>
+
+      {/* ── Admin ── */}
+      <Route element={<AdminRoute />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/admin" element={<Suspense fallback={<Spinner />}><AdminDashboard /></Suspense>} />
+          <Route path="/admin/brands" element={<Suspense fallback={<Spinner />}><Brands /></Suspense>} />
+          <Route path="/admin/categories" element={<Suspense fallback={<Spinner />}><AdminCategories /></Suspense>} />
+          <Route path="/admin/products" element={<Suspense fallback={<Spinner />}><AdminProducts /></Suspense>} />
+          <Route path="/admin/orders" element={<Suspense fallback={<Spinner />}><AdminOrders /></Suspense>} />
+          <Route path="/admin/orders/:id" element={<Suspense fallback={<Spinner />}><AdminOrderDetail /></Suspense>} />
+          <Route path="/admin/settings" element={<Suspense fallback={<Spinner />}><Settings /></Suspense>} />
+          <Route path="/admin/settings/hero-slides" element={<Suspense fallback={<Spinner />}><HeroSlides /></Suspense>} />
+          <Route path="/admin/settings/store-info" element={<Suspense fallback={<Spinner />}><StoreInfoSettings /></Suspense>} />
+          <Route path="/admin/settings/trending-products" element={<Suspense fallback={<Spinner />}><TrendingProducts /></Suspense>} />
+        </Route>
+      </Route>
+
+      {/* ── 404 ── */}
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+}
+
+================ frontend\src\api\checkout.api.js ================
+
+import api from "./axios.js";
+
+export const checkoutApi = {
+  createSession: (data) => api.post("/checkout-sessions", data),
+  getSession: (id) => api.get(`/checkout-sessions/${id}`),
+  confirmSession: (id) => api.post(`/checkout-sessions/${id}/confirm`),
+};
+
+================ frontend\src\api\admin.api.js ================
+
+import api from "./axios.js";
+
+export const adminApi = {
+  getStats: () => api.get("/admin/stats"),
+  getOrders: (params) => api.get("/admin/orders", { params }),
+  updateOrderStatus: (id, status) => api.patch(`/admin/orders/${id}/status`, { status }),
+};

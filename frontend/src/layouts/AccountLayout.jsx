@@ -3,11 +3,13 @@ import Navbar from "../components/common/Navbar";
 
 export default function AccountLayout() {
   return (
-    <>
+    <div className="app-shell">
       <Navbar />
-      <div className="container my-4">
-        <Outlet />
+      <div className="account-shell">
+        <div className="container">
+          <Outlet />
+        </div>
       </div>
-    </>
+    </div>
   );
 }

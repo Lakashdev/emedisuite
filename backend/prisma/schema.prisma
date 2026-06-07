@@ -106,9 +106,11 @@ model Product {
   checkoutSessionItems CheckoutSessionItem[]
   returnRequestItems   ReturnRequestItem[]
   heroSlides HeroSlide[]
+  trendingProduct TrendingProduct?
 
   @@index([brandId])
   @@index([categoryId])
+  
 }
 
 model ProductImage {
@@ -183,15 +185,43 @@ model CartItem {
 }
 
 model StoreSettings {
-  id                 String @id @default(cuid())
-  deliveryFeeInside  Int    @default(0)
-  deliveryFeeOutside Int    @default(0)
+  id String @id @default(cuid())
+
+  freeDeliveryThreshold Int @default(2000)
+  deliveryFeeInside     Int @default(100)
+  deliveryFeeHub        Int @default(150)
+  deliveryFeeOtherCity  Int @default(200)
+
+  // Kept temporarily for compatibility with older code.
+  deliveryFeeOutside Int @default(200)
 
   cancelWindowHours       Int @default(24)
   defaultReturnWindowDays Int @default(3)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model DeliveryZone {
+  id String @id @default(cuid())
+
+  city      String
+  district  String?
+  areaType  String // inside_valley | outside_valley
+  tier      String // valley | hub | other_city
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  orders           Order[]
+  checkoutSessions CheckoutSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([areaType, city])
+  @@index([areaType])
+  @@index([tier])
+  @@index([isActive])
 }
 
 
@@ -268,6 +298,12 @@ model Order {
   city        String  @default("Kathmandu")
 
   deliveryZone String // inside | outside
+  deliveryZoneId String?
+  deliveryZoneRef DeliveryZone? @relation(fields: [deliveryZoneId], references: [id])
+
+  // Snapshots preserve old invoices if the admin later edits a city.
+  deliveryTierSnapshot String?
+  deliveryCitySnapshot String?
 
   notes String?
 
@@ -287,6 +323,7 @@ model Order {
 
   @@index([userId])
   @@index([status])
+  @@index([deliveryZoneId])
 }
 
 model OrderItem {
@@ -323,6 +360,8 @@ model CheckoutSession {
   status String @default("active") // active | completed | cancelled | expired
 
   deliveryZone String? // inside | outside (optional until user selects)
+  deliveryZoneId String?
+  deliveryZoneRef DeliveryZone? @relation(fields: [deliveryZoneId], references: [id])
   fullName     String?
   phone        String?
   addressLine  String?
@@ -340,6 +379,7 @@ model CheckoutSession {
 
   @@index([userId])
   @@index([status])
+  @@index([deliveryZoneId])
 }
 
 model CheckoutSessionItem {
@@ -479,4 +519,16 @@ model StoreInfo {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+
+model TrendingProduct {
+  id        String   @id @default(cuid())
+  productId String   @unique
+  position  Int
+  addedAt   DateTime @default(now())
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("trending_products")
 }

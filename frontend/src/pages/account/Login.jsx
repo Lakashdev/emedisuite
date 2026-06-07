@@ -128,30 +128,6 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div className="d-flex gap-3">
-                  <div
-                    className="rounded-3 d-flex align-items-center justify-content-center"
-                    style={{
-                      width: 36,
-                      height: 36,
-                      background: "rgba(43,138,126,.10)",
-                      border: "1px solid rgba(43,138,126,.15)",
-                    }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M12 22s8-4 8-10V6l-8-4-8 4v6c0 6 8 10 8 10z"
-                        stroke="var(--brand)"
-                        strokeWidth="2"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="fw-semibold">Secure session</div>
-                    <div className="text-secondary small">JWT access + refresh tokens.</div>
-                  </div>
-                </div>
               </div>
 
               <div className="mt-4 pt-3" style={{ borderTop: "1px solid rgba(15,23,42,.08)" }}>
