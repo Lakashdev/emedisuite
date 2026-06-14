@@ -61,7 +61,7 @@ export const listProducts = async (req, res) => {
 };
 
 export const listBestSellers = async (req, res) => {
-  const limitNum = Math.min(12, Math.max(1, parseInt(req.query.limit || "6", 10)));
+  const limitNum = Math.min(16, Math.max(1, parseInt(req.query.limit || "6", 10)));
   const topSales = await prisma.orderItem.groupBy({
     by: ["productId"],
     where: {
