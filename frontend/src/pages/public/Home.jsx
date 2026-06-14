@@ -429,7 +429,7 @@ export function Hero() {
                 <img
                   src={resolveAssetUrl(s.product.images[0].url)}
                   alt={s.featName}
-                  style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 12 }}
+                  className="hero-card-product-img"
                 />
               ) : (
                 <div className="hero-card-img-bg" style={{ background: `${s.accent}14` }}>
@@ -1231,12 +1231,22 @@ const CSS = `
   overflow: hidden;
   box-shadow: 0 28px 70px rgba(27,61,110,.18);
   backdrop-filter: blur(18px);
-  transform: rotate(1deg);
 }
 .hero-card-img {
   position: relative;
   height: 230px;
   background: linear-gradient(145deg, #eef5eb, #edf3f8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+.hero-card-product-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 .hero-card-img-bg {
   width: 100%;
