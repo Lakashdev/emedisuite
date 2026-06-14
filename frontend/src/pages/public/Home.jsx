@@ -3,6 +3,7 @@ import { useRef, useState, useEffect, useMemo } from "react";
 import { getPublicTrendingProducts } from "../../api/trendingProducts";
 import { resolveAssetUrl } from "../../utils/assetUrl";
 import { getEffectivePrice } from "../../utils/money";
+import { notifyCartUpdated } from "../../utils/cartEvents";
 
 
 
@@ -171,15 +172,85 @@ function Stars({ rating }) {
 }
 
 /* ─── PRODUCT CARD ─── */
-function ProductCard({ p, onAddCart, compact = false }) {
-  const [added, setAdded] = useState(false);
+function addToGuestCart({ productId, variantId }) {
+  let cart = [];
 
-  function handleAdd(e) {
+  try {
+    const saved = JSON.parse(localStorage.getItem("guest_cart") || "[]");
+    cart = Array.isArray(saved) ? saved : [];
+  } catch {
+    cart = [];
+  }
+
+  const key = `${productId}:${variantId || "base"}`;
+  const existing = cart.find((item) => item.key === key);
+
+  if (existing) {
+    existing.qty = Number(existing.qty || existing.quantity || 0) + 1;
+  } else {
+    cart.push({ key, productId, variantId: variantId || null, qty: 1 });
+  }
+
+  localStorage.setItem("guest_cart", JSON.stringify(cart));
+  notifyCartUpdated();
+}
+
+async function addProductToCart(product) {
+  const variants = product.variants || [];
+  const variant = variants.find((item) => Number(item.stock || 0) > 0);
+  const inStock = variants.length
+    ? Boolean(variant)
+    : Number(product.baseStock || 0) > 0;
+
+  if (!inStock) throw new Error("Out of stock");
+
+  const body = {
+    productId: product.id,
+    quantity: 1,
+    ...(variant ? { variantId: variant.id } : {}),
+  };
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_BASE}/cart/items`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (response.status === 401) {
+    addToGuestCart({ productId: product.id, variantId: variant?.id });
+    return;
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || "Could not add to cart");
+
+  notifyCartUpdated();
+}
+
+function ProductCard({ p, compact = false }) {
+  const [cartState, setCartState] = useState("idle");
+  const variants = p.variants || [];
+  const inStock = variants.length
+    ? variants.some((item) => Number(item.stock || 0) > 0)
+    : Number(p.baseStock || 0) > 0;
+
+  async function handleAdd(e) {
     e.preventDefault();
     e.stopPropagation();
-    setAdded(true);
-    onAddCart?.();
-    setTimeout(() => setAdded(false), 1400);
+    if (!inStock || cartState === "loading") return;
+
+    setCartState("loading");
+    try {
+      await addProductToCart(p);
+      setCartState("added");
+    } catch {
+      setCartState("error");
+    }
+
+    window.setTimeout(() => setCartState("idle"), 1800);
   }
 
   return (
@@ -223,14 +294,23 @@ function ProductCard({ p, onAddCart, compact = false }) {
             ) : null}
           </div>
           <button
-            className={`add-btn ${added ? "added" : ""}`}
+            className={`add-btn ${cartState === "added" ? "added" : ""} ${cartState === "error" ? "cart-error" : ""}`}
             onClick={handleAdd}
             type="button"
+            disabled={!inStock || cartState === "loading"}
           >
-            {added ? (
+            {!inStock ? (
+              "Out of stock"
+            ) : cartState === "loading" ? (
+              <>
+                <i className="bi bi-arrow-repeat cart-spin" /> Adding...
+              </>
+            ) : cartState === "added" ? (
               <>
                 <i className="bi bi-check2" /> Added
               </>
+            ) : cartState === "error" ? (
+              "Try again"
             ) : (
               "Add to cart"
             )}
@@ -1686,6 +1766,21 @@ const CSS = `
   box-shadow: 0 10px 24px rgba(18,59,93,.2);
 }
 .add-btn.added { background: var(--green-dark); }
+.add-btn.cart-error { background: #b8323e; }
+.add-btn:disabled {
+  cursor: not-allowed;
+  opacity: .62;
+  transform: none;
+  box-shadow: none;
+}
+.add-btn:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+.cart-spin { animation: cartSpin .8s linear infinite; }
+@keyframes cartSpin {
+  to { transform: rotate(360deg); }
+}
 .add-btn:active { transform: scale(.97); }
 
 .bundles-section {

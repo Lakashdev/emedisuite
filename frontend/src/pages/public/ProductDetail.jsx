@@ -48,7 +48,6 @@ export default function ProductDetail() {
   const [product, setProduct] = useState(null);
   const [related, setRelated] = useState([]);
   const [activeImg, setActiveImg] = useState(0);
-  const [activeTab, setActiveTab] = useState("desc"); // desc | how | reviews
   const [selectedVariantId, setSelectedVariantId] = useState("");
   const [qty, setQty] = useState(1);
   const [toast, setToast] = useState({ msg: "", type: "success" });
@@ -474,38 +473,11 @@ export default function ProductDetail() {
             ) : null}
           </div>
 
-          {/* Tabs */}
+          {/* Description */}
           <div className="card card-soft p-3 mt-3">
-            <div className="d-flex gap-2 flex-wrap">
-              <button
-                className={`btn btn-sm rounded-pill ${activeTab === "desc" ? "btn-brand" : "btn-outline-secondary"}`}
-                type="button"
-                onClick={() => setActiveTab("desc")}
-              >
-                Description
-              </button>
-              <button
-                className={`btn btn-sm rounded-pill ${activeTab === "how" ? "btn-brand" : "btn-outline-secondary"}`}
-                type="button"
-                onClick={() => setActiveTab("how")}
-              >
-                How to use
-              </button>
-              <button
-                className={`btn btn-sm rounded-pill ${activeTab === "reviews" ? "btn-brand" : "btn-outline-secondary"}`}
-                type="button"
-                onClick={() => setActiveTab("reviews")}
-              >
-                Reviews
-              </button>
-            </div>
-
-            <div className="mt-3 text-secondary" style={{ lineHeight: 1.7 }}>
-              {activeTab === "desc" ? (product.description || "—") : null}
-              {activeTab === "how" ? (product.howToUse || "—") : null}
-              {activeTab === "reviews" ? (
-                <div className="text-secondary">Reviews will come from backend later.</div>
-              ) : null}
+            <h2 className="h6 fw-bold mb-2">Description</h2>
+            <div className="text-secondary" style={{ lineHeight: 1.7 }}>
+              {product.description || "—"}
             </div>
           </div>
 
