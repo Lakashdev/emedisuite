@@ -2,6 +2,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { api } from "/src/lib/api";
+import { getEffectivePrice } from "../../utils/money";
 
 /* ─── BRAND TOKENS (injected via <style> below) ─── */
 const BRAND_CSS = `
@@ -333,7 +334,30 @@ const BRAND_CSS = `
   font-size: 16px;
   font-weight: 700;
   color: var(--navy);
+}
+.ms-product-price-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
+}
+.ms-product-old-price {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.ms-sale-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #DC2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 4px 9px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(220,38,38,.2);
 }
 .ms-add-btn {
   width: 100%;
@@ -513,7 +537,8 @@ function ProductCard({ p }) {
   const inStock =
     Number(p?.baseStock || 0) > 0 ||
     (p?.variants || []).some((v) => Number(v.stock || 0) > 0);
-  const price = Number(p?.basePrice || 0);
+  const pricing = getEffectivePrice(p);
+  const hasDiscount = pricing.originalPrice !== null && pricing.price !== pricing.originalPrice;
 
   function handleCardClick() { navigate(`/products/${p.slug}`); }
   function handleWishlist(e) { stopProp(e); }
@@ -539,7 +564,12 @@ function ProductCard({ p }) {
             <i className="bi bi-capsule" style={{ fontSize: 36, color: "var(--navy)", opacity: .3 }} />
           </div>
         )}
-        {!inStock && <span className="ms-out-badge">Out of stock</span>}
+        {hasDiscount && <span className="ms-sale-badge">{pricing.discountPct}% OFF</span>}
+        {!inStock && (
+          <span className="ms-out-badge" style={hasDiscount ? { top: 42 } : undefined}>
+            Out of stock
+          </span>
+        )}
         <button className="ms-wish-btn" type="button" aria-label="Add to wishlist" onClick={handleWishlist}>
           <i className="bi bi-heart" />
         </button>
@@ -550,7 +580,12 @@ function ProductCard({ p }) {
           {p.brand?.name || "—"} &bull; {p.category?.name || "—"}
         </div>
         <div className="ms-product-name">{p.name}</div>
-        <div className="ms-product-price">{money(price)}</div>
+        <div className="ms-product-price-row">
+          <span className="ms-product-price">{money(pricing.price)}</span>
+          {hasDiscount && (
+            <span className="ms-product-old-price">{money(pricing.originalPrice)}</span>
+          )}
+        </div>
         <button
           className="ms-add-btn"
           type="button"
@@ -574,6 +609,10 @@ ProductCard.propTypes = {
     images: PropTypes.arrayOf(PropTypes.shape({ url: PropTypes.string })),
     baseStock: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
     basePrice: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    discountType: PropTypes.string,
+    discountValue: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    discountStartAt: PropTypes.string,
+    discountEndAt: PropTypes.string,
     variants: PropTypes.arrayOf(
       PropTypes.shape({ stock: PropTypes.oneOfType([PropTypes.string, PropTypes.number]) })
     ),
@@ -687,8 +726,8 @@ export default function ProductList() {
         return base || anyVariant;
       });
     }
-    if (sort === "price_asc") list.sort((a, b) => Number(a.basePrice || 0) - Number(b.basePrice || 0));
-    if (sort === "price_desc") list.sort((a, b) => Number(b.basePrice || 0) - Number(a.basePrice || 0));
+    if (sort === "price_asc") list.sort((a, b) => getEffectivePrice(a).price - getEffectivePrice(b).price);
+    if (sort === "price_desc") list.sort((a, b) => getEffectivePrice(b).price - getEffectivePrice(a).price);
     if (sort === "newest") list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     return list;
   }, [products, inStockOnly, sort]);

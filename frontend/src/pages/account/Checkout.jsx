@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { getCartItemPricing } from "../../utils/money";
 
-const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const API = import.meta.env.VITE_API_BASE_URL || "/api";
 
 function getHeaders() {
   const token = localStorage.getItem("token");
@@ -13,6 +14,7 @@ function getHeaders() {
 }
 
 const money = (n) => `NPR ${Number(n || 0).toLocaleString("en-US")}`;
+const itemPrice = (item) => getCartItemPricing(item).price;
 
 /* ─── Step indicator ─── */
 function Steps({ step }) {
@@ -50,10 +52,15 @@ function Steps({ step }) {
 
 /* ─── Price summary sidebar ─── */
 function PriceSummary({ items, deliveryFee, deliveryZoneId, loading }) {
+  const originalSubtotal = items.reduce((sum, it) => {
+    const pricing = getCartItemPricing(it);
+    return sum + (pricing.originalPrice ?? pricing.price) * it.quantity;
+  }, 0);
   const subtotal = items.reduce((sum, it) => {
-    const price = it.variant ? it.variant.price : it.product.basePrice;
+    const price = itemPrice(it);
     return sum + price * it.quantity;
   }, 0);
+  const discountTotal = originalSubtotal - subtotal;
   const total = subtotal + (deliveryZoneId ? deliveryFee : 0);
 
   return (
@@ -65,7 +72,7 @@ function PriceSummary({ items, deliveryFee, deliveryZoneId, loading }) {
 
       <div style={{ maxHeight: 240, overflowY: "auto", marginBottom: 16 }}>
         {items.map((it) => {
-          const price = it.variant ? it.variant.price : it.product.basePrice;
+          const price = itemPrice(it);
           return (
             <div key={it.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 13.5 }}>
               <div style={{ color: "#475569", flex: 1, marginRight: 8 }}>
@@ -82,8 +89,14 @@ function PriceSummary({ items, deliveryFee, deliveryZoneId, loading }) {
       <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#64748b" }}>
           <span>Subtotal</span>
-          <span style={{ fontWeight: 600 }}>{money(subtotal)}</span>
+          <span style={{ fontWeight: 600 }}>{money(originalSubtotal)}</span>
         </div>
+        {discountTotal > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#15803d" }}>
+            <span>Product discount</span>
+            <span style={{ fontWeight: 700 }}>- {money(discountTotal)}</span>
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#64748b" }}>
           <span>Delivery fee</span>
           {loading ? (
@@ -113,7 +126,7 @@ function PriceSummary({ items, deliveryFee, deliveryZoneId, loading }) {
 }
 
 /* ─── STEP 1: Item selection ─── */
-function StepSelectItems({ cartItems, selected, onToggle, onToggleAll, onNext }) {
+function StepSelectItems({ cartItems, selected, onToggle, onToggleAll, onNext, loading }) {
   const allSelected = cartItems.length > 0 && selected.size === cartItems.length;
 
   return (
@@ -143,7 +156,7 @@ function StepSelectItems({ cartItems, selected, onToggle, onToggleAll, onNext })
 
         {/* Items */}
         {cartItems.map((item) => {
-          const price = item.variant ? item.variant.price : item.product.basePrice;
+          const price = itemPrice(item);
           const isChecked = selected.has(item.id);
           const img = item.product.images?.[0]?.url;
 
@@ -205,16 +218,16 @@ function StepSelectItems({ cartItems, selected, onToggle, onToggleAll, onNext })
       <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
         <button
           onClick={onNext}
-          disabled={selected.size === 0}
+          disabled={selected.size === 0 || loading}
           style={{
             padding: "12px 28px", borderRadius: 10,
-            background: selected.size === 0 ? "#e2e8f0" : "#1B3D6E",
-            color: selected.size === 0 ? "#94a3b8" : "#fff",
-            border: "none", fontWeight: 800, fontSize: 14, cursor: selected.size === 0 ? "not-allowed" : "pointer",
+            background: selected.size === 0 || loading ? "#e2e8f0" : "#1B3D6E",
+            color: selected.size === 0 || loading ? "#94a3b8" : "#fff",
+            border: "none", fontWeight: 800, fontSize: 14, cursor: selected.size === 0 || loading ? "not-allowed" : "pointer",
             display: "flex", alignItems: "center", gap: 8,
           }}
         >
-          Continue to Delivery <i className="bi bi-arrow-right" />
+          {loading ? "Preparing checkout..." : "Continue to Delivery"} <i className="bi bi-arrow-right" />
         </button>
       </div>
     </div>
@@ -378,10 +391,15 @@ function StepDelivery({ form, onChange, zones, quote, settingsLoading, onBack, o
 
 /* ─── STEP 3: Confirm ─── */
 function StepConfirm({ form, selectedItems, deliveryFee, submitting, onBack, onConfirm }) {
+  const originalSubtotal = selectedItems.reduce((sum, it) => {
+    const pricing = getCartItemPricing(it);
+    return sum + (pricing.originalPrice ?? pricing.price) * it.quantity;
+  }, 0);
   const subtotal = selectedItems.reduce((sum, it) => {
-    const price = it.variant ? it.variant.price : it.product.basePrice;
+    const price = itemPrice(it);
     return sum + price * it.quantity;
   }, 0);
+  const discountTotal = originalSubtotal - subtotal;
   const total = subtotal + deliveryFee;
 
   return (
@@ -395,7 +413,7 @@ function StepConfirm({ form, selectedItems, deliveryFee, submitting, onBack, onC
           Items ({selectedItems.length})
         </div>
         {selectedItems.map((it) => {
-          const price = it.variant ? it.variant.price : it.product.basePrice;
+          const price = itemPrice(it);
           return (
             <div key={it.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 13.5 }}>
               <div>
@@ -409,8 +427,13 @@ function StepConfirm({ form, selectedItems, deliveryFee, submitting, onBack, onC
         })}
         <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 12, marginTop: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#64748b", marginBottom: 6 }}>
-            <span>Subtotal</span><span>{money(subtotal)}</span>
+            <span>Subtotal</span><span>{money(originalSubtotal)}</span>
           </div>
+          {discountTotal > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#15803d", marginBottom: 6 }}>
+              <span>Product discount</span><span>- {money(discountTotal)}</span>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#64748b", marginBottom: 6 }}>
             <span>Delivery</span><span>{deliveryFee === 0 ? "Free" : money(deliveryFee)}</span>
           </div>
@@ -564,7 +587,7 @@ export default function Checkout() {
 
   const selectedItems = cartItems.filter((it) => selected.has(it.id));
   const selectedSubtotal = selectedItems.reduce((sum, it) => {
-    const price = it.variant ? it.variant.price : it.product.basePrice;
+    const price = itemPrice(it);
     return sum + price * it.quantity;
   }, 0);
   const deliveryFee = quote?.deliveryFee ?? 0;
@@ -744,6 +767,7 @@ export default function Checkout() {
                 onToggle={toggleItem}
                 onToggleAll={toggleAll}
                 onNext={handleStep1Next}
+                loading={sessionLoading}
               />
             )}
             {step === 2 && (

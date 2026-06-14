@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 // Simple in-memory cache so Footer + About don't double-fetch
 let _cache = null;

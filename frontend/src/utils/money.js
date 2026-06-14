@@ -11,8 +11,8 @@ export function formatNPR(amount) {
  * Calculate the effective (discounted) price of a product.
  * Returns { price, originalPrice, discountPct } — all as numbers.
  */
-export function getEffectivePrice(product) {
-  const base = product.basePrice;
+export function getEffectivePrice(product, basePrice = product?.basePrice) {
+  const base = Number(basePrice || 0);
   const now = new Date();
   const inWindow =
     product.discountType &&
@@ -27,10 +27,18 @@ export function getEffectivePrice(product) {
   let discounted;
   if (product.discountType === "percent") {
     discounted = Math.round(base * (1 - product.discountValue / 100));
-  } else {
+  } else if (product.discountType === "fixed" || product.discountType === "flat") {
     discounted = Math.max(0, base - product.discountValue);
+  } else {
+    discounted = base;
   }
 
-  const discountPct = Math.round(((base - discounted) / base) * 100);
+  discounted = Math.max(0, discounted);
+  const discountPct = base > 0 ? Math.round(((base - discounted) / base) * 100) : 0;
   return { price: discounted, originalPrice: base, discountPct };
+}
+
+export function getCartItemPricing(item) {
+  const originalPrice = Number(item?.variant?.price ?? item?.product?.basePrice ?? 0);
+  return getEffectivePrice(item?.product, originalPrice);
 }

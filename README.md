@@ -61,6 +61,7 @@ POSTGRES_PASSWORD=super-secure-password
 
 JWT_ACCESS_SECRET=generate-64-char-random-string
 FRONTEND_URL=https://your-domain.com
+CORS_ORIGINS=https://your-domain.com,https://www.your-domain.com
 VITE_API_BASE_URL=/api
 
 SMTP_HOST=smtp.gmail.com
@@ -101,6 +102,7 @@ App runs at `http://localhost` (port 80).
 | `JWT_ACCESS_SECRET` | ✅ | 64+ char secret for JWT signing |
 | `JWT_ACCESS_EXPIRES_IN` | — | Default: `15m` |
 | `FRONTEND_URL` | ✅ | Allowed CORS origin |
+| `CORS_ORIGINS` | — | Comma-separated allowed origins; overrides `FRONTEND_URL` |
 | `SMTP_HOST` | ✅ | SMTP server host |
 | `SMTP_PORT` | — | Default: `587` |
 | `SMTP_USER` | ✅ | SMTP username |
@@ -136,7 +138,7 @@ Navigate to `/admin` and log in with the seeded admin credentials.
 
 - **Helmet** — sets secure HTTP headers
 - **Rate limiting** — 200 req/15min global, 20 req/15min on auth routes
-- **CORS** — restricted to `FRONTEND_URL` in production
+- **CORS** — restricted to `CORS_ORIGINS` (or `FRONTEND_URL`) in production
 - **Compression** — gzip on all responses
 - **Graceful shutdown** — closes DB connections cleanly on SIGTERM
 - **Error boundary** — prevents whole frontend from crashing on errors

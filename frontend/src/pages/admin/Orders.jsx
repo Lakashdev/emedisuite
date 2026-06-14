@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../api/axios.js";
 import Loader from "../../components/common/Loader.jsx";
@@ -17,29 +17,34 @@ export default function AdminOrders() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const LIMIT = 20;
 
-  useEffect(() => {
-    fetchOrders();
-  }, [statusFilter, page]);
-
-  async function fetchOrders() {
+  const fetchOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const params = { page, limit: LIMIT };
       if (statusFilter) params.status = statusFilter;
+      if (search) params.search = search;
       const res = await api.get("/admin/orders", { params });
       setOrders(res.data.orders || res.data.items || []);
       setTotal(res.data.total || 0);
+      setTotalPages(res.data.totalPages || Math.max(1, Math.ceil((res.data.total || 0) / LIMIT)));
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, search, statusFilter]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   async function handleStatusChange(orderId, newStatus) {
     try {
@@ -50,22 +55,58 @@ export default function AdminOrders() {
     }
   }
 
-  const totalPages = Math.ceil(total / LIMIT);
+  function handleSearch(event) {
+    event.preventDefault();
+    setPage(1);
+    setSearch(searchInput.trim());
+  }
+
+  function clearFilters() {
+    setSearchInput("");
+    setSearch("");
+    setStatusFilter("");
+    setPage(1);
+  }
 
   return (
     <div>
-      <div className="d-flex align-items-center justify-content-between mb-4">
-        <h4 className="fw-bold mb-0">Orders</h4>
-        <select
-          className="form-select form-select-sm w-auto"
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-        >
-          <option value="">All Statuses</option>
-          {Object.keys(STATUS_COLORS).map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+      <div className="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-4">
+        <div>
+          <h4 className="fw-bold mb-1">Orders</h4>
+          <div className="text-muted small">{total} matching orders</div>
+        </div>
+
+        <form className="d-flex flex-wrap gap-2" onSubmit={handleSearch}>
+          <input
+            className="form-control form-control-sm"
+            style={{ width: 270 }}
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Order #, customer, email, or phone"
+          />
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 160 }}
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All statuses</option>
+            {Object.keys(STATUS_COLORS).map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+          <button className="btn btn-sm btn-primary" type="submit">
+            <i className="bi bi-search me-1" />Search
+          </button>
+          {(search || statusFilter) && (
+            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={clearFilters}>
+              Clear
+            </button>
+          )}
+        </form>
       </div>
 
       {loading && <Loader />}
@@ -93,7 +134,8 @@ export default function AdminOrders() {
                     <td><span className="fw-semibold">{order.orderNumber}</span></td>
                     <td>
                       <div>{order.fullName}</div>
-                      <small className="text-muted">{order.phone}</small>
+                      <small className="text-muted d-block">{order.phone}</small>
+                      {order.user?.email && <small className="text-muted">{order.user.email}</small>}
                     </td>
                     <td>NPR {order.total?.toLocaleString()}</td>
                     <td>
@@ -129,13 +171,13 @@ export default function AdminOrders() {
 
           {totalPages > 1 && (
             <div className="d-flex justify-content-center gap-2 mt-3">
-              <button className="btn btn-sm btn-outline-secondary" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
+              <button className="btn btn-sm btn-outline-secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
                 &laquo; Prev
               </button>
               <span className="align-self-center text-muted small">
                 Page {page} of {totalPages}
               </span>
-              <button className="btn btn-sm btn-outline-secondary" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>
+              <button className="btn btn-sm btn-outline-secondary" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
                 Next &raquo;
               </button>
             </div>

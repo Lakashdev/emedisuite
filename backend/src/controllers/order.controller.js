@@ -1,6 +1,13 @@
 import { prisma } from "../config/prisma.js";
 import { sendOrderEmails } from "../utils/orderEmail.js";
 import { getDeliveryQuote } from "../services/delivery.service.js";
+import { getProductPricing } from "../utils/productPricing.js";
+
+function httpError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
 
 function generateOrderNumber() {
   const now = new Date();
@@ -44,11 +51,13 @@ export const placeOrder = async (req, res) => {
       });
 
       if (!cart || cart.items.length === 0) {
-        return { error: { status: 400, message: "cart is empty" } };
+        throw httpError(400, "cart is empty");
       }
 
       // re-check stock and compute totals
       let subtotal = 0;
+      let discountTotal = 0;
+      const finalItems = [];
 
       for (const item of cart.items) {
         const qty = item.quantity;
@@ -56,34 +65,83 @@ export const placeOrder = async (req, res) => {
         if (item.variantId) {
           const v = await tx.productVariant.findUnique({
             where: { id: item.variantId },
-            select: { id: true, stock: true, price: true, name: true, productId: true },
+            select: {
+              id: true,
+              stock: true,
+              price: true,
+              name: true,
+              productId: true,
+              product: {
+                select: {
+                  discountType: true,
+                  discountValue: true,
+                  discountStartAt: true,
+                  discountEndAt: true,
+                },
+              },
+            },
           });
 
-          if (!v) return { error: { status: 400, message: "variant not found" } };
-          if (v.productId !== item.productId) return { error: { status: 400, message: "variant mismatch" } };
-          if (v.stock < qty) return { error: { status: 400, message: "insufficient stock for variant" } };
+          if (!v) throw httpError(400, "variant not found");
+          if (v.productId !== item.productId) throw httpError(400, "variant mismatch");
+          if (v.stock < qty) throw httpError(400, "insufficient stock for variant");
 
-          subtotal += v.price * qty;
+          const pricing = getProductPricing(v.product, v.price);
+          subtotal += pricing.originalUnitPrice * qty;
+          discountTotal += pricing.discountPerUnit * qty;
+          finalItems.push({
+            productId: item.productId,
+            variantId: item.variantId,
+            productName: item.product.name,
+            variantName: v.name,
+            unitPrice: pricing.unitPrice,
+            quantity: qty,
+          });
         } else {
           const p = await tx.product.findUnique({
             where: { id: item.productId },
-            select: { id: true, baseStock: true, basePrice: true, name: true },
+            select: {
+              id: true,
+              baseStock: true,
+              basePrice: true,
+              name: true,
+              discountType: true,
+              discountValue: true,
+              discountStartAt: true,
+              discountEndAt: true,
+            },
           });
 
-          if (!p) return { error: { status: 400, message: "product not found" } };
-          if (p.baseStock < qty) return { error: { status: 400, message: "insufficient stock for product" } };
+          if (!p) throw httpError(400, "product not found");
+          if (p.baseStock < qty) throw httpError(400, "insufficient stock for product");
 
-          subtotal += p.basePrice * qty;
+          const pricing = getProductPricing(p, p.basePrice);
+          subtotal += pricing.originalUnitPrice * qty;
+          discountTotal += pricing.discountPerUnit * qty;
+          finalItems.push({
+            productId: item.productId,
+            variantId: null,
+            productName: p.name,
+            variantName: null,
+            unitPrice: pricing.unitPrice,
+            quantity: qty,
+          });
         }
       }
 
-      // MVP: discountTotal = 0 (we will add discount logic later)
-      const discountTotal = 0;
-
-      const quote = await getDeliveryQuote(tx, deliveryZoneId, subtotal);
+      const quote = await getDeliveryQuote(tx, deliveryZoneId, subtotal - discountTotal);
       const deliveryFee = quote.deliveryFee;
 
       const total = subtotal - discountTotal + deliveryFee;
+
+      // Claim the cart rows before creating an order. A concurrent request that
+      // loaded the same cart will delete zero rows and must abort.
+      const claimedCart = await tx.cartItem.deleteMany({
+        where: { id: { in: cart.items.map((item) => item.id) }, cartId: cart.id },
+      });
+      if (claimedCart.count !== cart.items.length) {
+        throw httpError(409, "cart changed while placing the order; please try again");
+      }
 
       const orderNumber = generateOrderNumber();
 
@@ -111,65 +169,35 @@ export const placeOrder = async (req, res) => {
         },
       });
 
-      // create order items and decrement stock
-      for (const item of cart.items) {
-        const qty = item.quantity;
+      // create order items and atomically decrement stock
+      for (const item of finalItems) {
+        const stockUpdate = item.variantId
+          ? await tx.productVariant.updateMany({
+              where: { id: item.variantId, stock: { gte: item.quantity } },
+              data: { stock: { decrement: item.quantity } },
+            })
+          : await tx.product.updateMany({
+              where: { id: item.productId, baseStock: { gte: item.quantity } },
+              data: { baseStock: { decrement: item.quantity } },
+            });
 
-        if (item.variantId) {
-          const v = await tx.productVariant.findUnique({
-            where: { id: item.variantId },
-            select: { id: true, stock: true, price: true, name: true, productId: true },
-          });
-
-          if (!v || v.stock < qty) return { error: { status: 400, message: "insufficient stock" } };
-
-          await tx.orderItem.create({
-            data: {
-              orderId: order.id,
-              productId: item.productId,
-              variantId: item.variantId,
-              productName: item.product.name,
-              variantName: v.name,
-              unitPrice: v.price,
-              quantity: qty,
-              lineTotal: v.price * qty,
-            },
-          });
-
-          await tx.productVariant.update({
-            where: { id: v.id },
-            data: { stock: v.stock - qty },
-          });
-        } else {
-          const p = await tx.product.findUnique({
-            where: { id: item.productId },
-            select: { id: true, baseStock: true, basePrice: true, name: true },
-          });
-
-          if (!p || p.baseStock < qty) return { error: { status: 400, message: "insufficient stock" } };
-
-          await tx.orderItem.create({
-            data: {
-              orderId: order.id,
-              productId: item.productId,
-              variantId: null,
-              productName: p.name,
-              variantName: null,
-              unitPrice: p.basePrice,
-              quantity: qty,
-              lineTotal: p.basePrice * qty,
-            },
-          });
-
-          await tx.product.update({
-            where: { id: p.id },
-            data: { baseStock: p.baseStock - qty },
-          });
+        if (stockUpdate.count !== 1) {
+          throw httpError(409, `insufficient stock for ${item.productName}`);
         }
-      }
 
-      // clear cart
-      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+        await tx.orderItem.create({
+          data: {
+            orderId: order.id,
+            productId: item.productId,
+            variantId: item.variantId,
+            productName: item.productName,
+            variantName: item.variantName,
+            unitPrice: item.unitPrice,
+            quantity: item.quantity,
+            lineTotal: item.unitPrice * item.quantity,
+          },
+        });
+      }
 
       const fullOrder = await tx.order.findUnique({
         where: { id: order.id },
@@ -179,19 +207,16 @@ export const placeOrder = async (req, res) => {
       return { order: fullOrder };
     });
 
-    if (result.error) {
-      return res.status(result.error.status).json({ message: result.error.message });
-    }
     try {
-  const userRecord = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { email: true },
-  });
+      const userRecord = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
 
-  await sendOrderEmails(result.order, userRecord?.email ?? null);
-} catch (emailErr) {
-  console.error("sendOrderEmails error:", emailErr);
-}
+      await sendOrderEmails(result.order, userRecord?.email ?? null);
+    } catch (emailErr) {
+      console.error("sendOrderEmails error:", emailErr);
+    }
 
     return res.status(201).json({ order: result.order });
   } catch (error) {

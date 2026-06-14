@@ -186,6 +186,7 @@ function buildCustomerText(order) {
     ...order.items.map((it) => `  - ${it.productName}${it.variantName ? ` (${it.variantName})` : ""} x${it.quantity} = ${money(it.lineTotal)}`),
     ``,
     `Subtotal: ${money(order.subtotal)}`,
+    ...(order.discountTotal > 0 ? [`Discount: - ${money(order.discountTotal)}`] : []),
     `Delivery: ${money(order.deliveryFee)}`,
     `Total: ${money(order.total)}`,
     ``,

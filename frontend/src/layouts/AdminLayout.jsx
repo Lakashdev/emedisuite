@@ -101,6 +101,10 @@ export default function AdminLayout() {
             <i className="bi bi-receipt" /> <span>Orders</span>
           </NavLink>
 
+          <NavLink to="/admin/users" className={navLinkClass}>
+            <i className="bi bi-people" /> <span>Users</span>
+          </NavLink>
+
           {/* ── Settings dropdown ── */}
           <div style={{ marginTop: 4 }}>
             <button

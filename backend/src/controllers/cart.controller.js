@@ -38,7 +38,20 @@ export const getMyCart = async (req, res) => {
     include: {
       items: {
         include: {
-          product: { select: { id: true, name: true, slug: true, basePrice: true, baseStock: true, images: { select: { url: true }, orderBy: { position: 'asc' }, take: 1 } } },
+          product: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              basePrice: true,
+              baseStock: true,
+              discountType: true,
+              discountValue: true,
+              discountStartAt: true,
+              discountEndAt: true,
+              images: { select: { url: true }, orderBy: { position: "asc" }, take: 1 },
+            },
+          },
           variant: { select: { id: true, name: true, price: true, stock: true } },
         },
         orderBy: { createdAt: "asc" },
@@ -217,7 +230,18 @@ export const mergeGuestCart = async (req, res) => {
     include: {
       items: {
         include: {
-          product: { select: { id: true, name: true, slug: true, basePrice: true } },
+          product: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              basePrice: true,
+              discountType: true,
+              discountValue: true,
+              discountStartAt: true,
+              discountEndAt: true,
+            },
+          },
           variant: { select: { id: true, name: true, price: true } },
         },
         orderBy: { createdAt: "asc" },

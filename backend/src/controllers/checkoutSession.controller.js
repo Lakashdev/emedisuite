@@ -1,8 +1,15 @@
 import { prisma } from "../config/prisma.js";
 import { sendOrderEmails } from "../utils/orderEmail.js";
 import { getDeliveryQuote } from "../services/delivery.service.js";
+import { getProductPricing } from "../utils/productPricing.js";
 
 const SESSION_TTL_MINUTES = 30;
+
+function httpError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
 
 function isExpired(expiresAt) {
   return new Date(expiresAt).getTime() <= Date.now();
@@ -12,19 +19,52 @@ async function getAvailableStock(tx, productId, variantId) {
   if (variantId) {
     const v = await tx.productVariant.findUnique({
       where: { id: variantId },
-      select: { id: true, stock: true, price: true, name: true, productId: true },
+      select: {
+        id: true,
+        stock: true,
+        price: true,
+        name: true,
+        productId: true,
+        product: {
+          select: {
+            discountType: true,
+            discountValue: true,
+            discountStartAt: true,
+            discountEndAt: true,
+          },
+        },
+      },
     });
     if (!v) return { ok: false, message: "variant not found" };
     if (v.productId !== productId) return { ok: false, message: "variant does not belong to product" };
-    return { ok: true, stock: v.stock, unitPrice: v.price, variantName: v.name };
+    return {
+      ok: true,
+      stock: v.stock,
+      ...getProductPricing(v.product, v.price),
+      variantName: v.name,
+    };
   }
 
   const p = await tx.product.findUnique({
     where: { id: productId },
-    select: { id: true, baseStock: true, basePrice: true, name: true },
+    select: {
+      id: true,
+      baseStock: true,
+      basePrice: true,
+      name: true,
+      discountType: true,
+      discountValue: true,
+      discountStartAt: true,
+      discountEndAt: true,
+    },
   });
   if (!p) return { ok: false, message: "product not found" };
-  return { ok: true, stock: p.baseStock, unitPrice: p.basePrice, variantName: null };
+  return {
+    ok: true,
+    stock: p.baseStock,
+    ...getProductPricing(p, p.basePrice),
+    variantName: null,
+  };
 }
 
 export const createCheckoutSession = async (req, res) => {
@@ -114,7 +154,19 @@ export const getCheckoutSession = async (req, res) => {
     include: {
       items: {
         include: {
-          product: { select: { id: true, name: true, slug: true, basePrice: true, baseStock: true } },
+          product: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              basePrice: true,
+              baseStock: true,
+              discountType: true,
+              discountValue: true,
+              discountStartAt: true,
+              discountEndAt: true,
+            },
+          },
           variant: { select: { id: true, name: true, price: true, stock: true } },
           cartItem: true,
         },
@@ -137,15 +189,18 @@ export const getCheckoutSession = async (req, res) => {
 
   // compute totals preview
   let subtotal = 0;
+  let discountTotal = 0;
   for (const it of session.items) {
-    const unitPrice = it.variantId ? (it.variant?.price ?? 0) : (it.product?.basePrice ?? 0);
-    subtotal += unitPrice * it.quantity;
+    const originalUnitPrice = it.variantId ? (it.variant?.price ?? 0) : (it.product?.basePrice ?? 0);
+    const pricing = getProductPricing(it.product, originalUnitPrice);
+    subtotal += pricing.originalUnitPrice * it.quantity;
+    discountTotal += pricing.discountPerUnit * it.quantity;
   }
+  const discountedSubtotal = subtotal - discountTotal;
   const quote = session.deliveryZoneId
-    ? await getDeliveryQuote(prisma, session.deliveryZoneId, subtotal)
+    ? await getDeliveryQuote(prisma, session.deliveryZoneId, discountedSubtotal)
     : null;
   const deliveryFee = quote?.deliveryFee ?? 0;
-  const discountTotal = 0;
   const total = subtotal - discountTotal + deliveryFee;
 
   res.json({
@@ -225,8 +280,23 @@ export const confirmCheckoutSession = async (req, res) => {
         return { error: { status: 400, message: "session has no items" } };
       }
 
+      // Claim the session so two confirmations cannot create duplicate orders.
+      const claimedSession = await tx.checkoutSession.updateMany({
+        where: {
+          id: session.id,
+          userId,
+          status: "active",
+          expiresAt: { gt: new Date() },
+        },
+        data: { status: "processing" },
+      });
+      if (claimedSession.count !== 1) {
+        throw httpError(409, "checkout session is already being processed");
+      }
+
       // Re-check stock and compute subtotal (final gate)
       let subtotal = 0;
+      let discountTotal = 0;
       const finalItems = [];
 
       for (const it of session.items) {
@@ -239,7 +309,8 @@ export const confirmCheckoutSession = async (req, res) => {
 
         const qty = Math.min(it.quantity, stockCheck.stock);
         const unitPrice = stockCheck.unitPrice;
-        subtotal += unitPrice * qty;
+        subtotal += stockCheck.originalUnitPrice * qty;
+        discountTotal += stockCheck.discountPerUnit * qty;
 
         finalItems.push({
           sessionItemId: it.id,
@@ -262,9 +333,9 @@ export const confirmCheckoutSession = async (req, res) => {
         }
       }
 
-      const quote = await getDeliveryQuote(tx, deliveryZoneId, subtotal);
+      const discountedSubtotal = subtotal - discountTotal;
+      const quote = await getDeliveryQuote(tx, deliveryZoneId, discountedSubtotal);
       const deliveryFee = quote.deliveryFee;
-      const discountTotal = 0;
       const total = subtotal - discountTotal + deliveryFee;
 
       // Create order
@@ -296,6 +367,20 @@ export const confirmCheckoutSession = async (req, res) => {
 
       // Create order items + decrement stock
       for (const fi of finalItems) {
+        const stockUpdate = fi.variantId
+          ? await tx.productVariant.updateMany({
+              where: { id: fi.variantId, stock: { gte: fi.quantity } },
+              data: { stock: { decrement: fi.quantity } },
+            })
+          : await tx.product.updateMany({
+              where: { id: fi.productId, baseStock: { gte: fi.quantity } },
+              data: { baseStock: { decrement: fi.quantity } },
+            });
+
+        if (stockUpdate.count !== 1) {
+          throw httpError(409, `insufficient stock for ${fi.productName}`);
+        }
+
         await tx.orderItem.create({
           data: {
             orderId: order.id,
@@ -308,32 +393,6 @@ export const confirmCheckoutSession = async (req, res) => {
             lineTotal: fi.lineTotal,
           },
         });
-
-        if (fi.variantId) {
-          const v = await tx.productVariant.findUnique({
-            where: { id: fi.variantId },
-            select: { id: true, stock: true },
-          });
-          if (!v || v.stock < fi.quantity) {
-            return { error: { status: 400, message: "insufficient stock during confirm" } };
-          }
-          await tx.productVariant.update({
-            where: { id: v.id },
-            data: { stock: v.stock - fi.quantity },
-          });
-        } else {
-          const p = await tx.product.findUnique({
-            where: { id: fi.productId },
-            select: { id: true, baseStock: true },
-          });
-          if (!p || p.baseStock < fi.quantity) {
-            return { error: { status: 400, message: "insufficient stock during confirm" } };
-          }
-          await tx.product.update({
-            where: { id: p.id },
-            data: { baseStock: p.baseStock - fi.quantity },
-          });
-        }
       }
 
       // Remove only ordered items from cart

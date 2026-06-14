@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { notifyCartUpdated } from "../../utils/cartEvents";
+import { getCartItemPricing } from "../../utils/money";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 function getAuthHeaders() {
   const token = localStorage.getItem("token");
@@ -14,7 +15,7 @@ function getAuthHeaders() {
 
 /* ─── helpers ─── */
 function effectivePrice(item) {
-  return item.variant ? item.variant.price : item.product.basePrice;
+  return getCartItemPricing(item).price;
 }
 
 function lineTotal(item) {
@@ -59,7 +60,7 @@ function EmptyCart() {
 
 /* ─── Cart Item Row ─── */
 function CartItemRow({ item, onQtyChange, onRemove, loading }) {
-  const price = effectivePrice(item);
+  const { price, originalPrice } = getCartItemPricing(item);
   const total = lineTotal(item);
   const maxStock = item.variant ? item.variant.stock : item.product.baseStock;
 
@@ -99,6 +100,11 @@ function CartItemRow({ item, onQtyChange, onRemove, loading }) {
         )}
         <div style={{ fontSize: 13, color: "#1B3D6E", fontWeight: 700, marginTop: 4 }}>
           NPR {price.toLocaleString()}
+          {originalPrice !== null && originalPrice !== price && (
+            <span style={{ color: "#94a3b8", textDecoration: "line-through", fontWeight: 500, marginLeft: 8 }}>
+              NPR {originalPrice.toLocaleString()}
+            </span>
+          )}
         </div>
       </div>
 
@@ -155,7 +161,12 @@ function CartItemRow({ item, onQtyChange, onRemove, loading }) {
 
 /* ─── Order Summary ─── */
 function OrderSummary({ items, onCheckout }) {
+  const originalSubtotal = items.reduce((sum, item) => {
+    const pricing = getCartItemPricing(item);
+    return sum + (pricing.originalPrice ?? pricing.price) * item.quantity;
+  }, 0);
   const subtotal = items.reduce((sum, item) => sum + lineTotal(item), 0);
+  const discountTotal = originalSubtotal - subtotal;
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
@@ -170,8 +181,14 @@ function OrderSummary({ items, onCheckout }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: "#475569" }}>
           <span>Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})</span>
-          <span style={{ fontWeight: 600 }}>NPR {subtotal.toLocaleString()}</span>
+          <span style={{ fontWeight: 600 }}>NPR {originalSubtotal.toLocaleString()}</span>
         </div>
+        {discountTotal > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: "#15803d" }}>
+            <span>Product discount</span>
+            <span style={{ fontWeight: 700 }}>- NPR {discountTotal.toLocaleString()}</span>
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: "#475569" }}>
           <span>Delivery fee</span>
           <span style={{ color: "#6BBF4E", fontWeight: 600 }}>Calculated at checkout</span>

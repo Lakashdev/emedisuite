@@ -1,26 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Line, Bar } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Tooltip,
-  Legend,
-} from "chart.js";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Tooltip,
-  Legend
-);
 
 const API_BASE = "/api";
 
@@ -60,33 +40,6 @@ export default function Dashboard() {
     load(days);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days]);
-
-  const ordersLine = useMemo(() => {
-    if (!data) return null;
-    return {
-      labels: data.charts.labels,
-      datasets: [
-        {
-          label: "Orders",
-          data: data.charts.ordersSeries,
-          tension: 0.3,
-        },
-      ],
-    };
-  }, [data]);
-
-  const revenueBar = useMemo(() => {
-    if (!data) return null;
-    return {
-      labels: data.charts.labels,
-      datasets: [
-        {
-          label: "Revenue",
-          data: data.charts.revenueSeries,
-        },
-      ],
-    };
-  }, [data]);
 
   return (
     <div>
@@ -153,13 +106,13 @@ export default function Dashboard() {
             </div>
 
             <div className="col-12 col-md-3">
-              <div className="card shadow-sm">
+              <Link to="/admin/users" className="card shadow-sm text-decoration-none text-dark h-100">
                 <div className="card-body">
                   <div className="text-muted small">Users</div>
                   <div className="h4 mb-0">{data.kpis.totalUsers}</div>
-                  <div className="small text-muted mt-1">Registered customers</div>
+                  <div className="small text-primary mt-1">View registered users</div>
                 </div>
-              </div>
+              </Link>
             </div>
 
             <div className="col-12 col-md-3">
@@ -170,6 +123,55 @@ export default function Dashboard() {
                   <div className="small text-muted mt-1">Active catalogue</div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="card shadow-sm mb-3">
+            <div className="card-header bg-white d-flex align-items-center justify-content-between">
+              <div>
+                <div className="fw-semibold">Recent users</div>
+                <div className="small text-muted">Latest registered accounts</div>
+              </div>
+              <Link to="/admin/users" className="btn btn-sm btn-outline-primary">
+                Manage users
+              </Link>
+            </div>
+            <div className="table-responsive">
+              <table className="table table-hover align-middle mb-0">
+                <thead className="table-light">
+                  <tr>
+                    <th>Name</th>
+                    <th>Contact</th>
+                    <th>Role</th>
+                    <th>Email</th>
+                    <th>Orders</th>
+                    <th>Joined</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.recentUsers || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center text-muted py-4">No users found</td>
+                    </tr>
+                  ) : data.recentUsers.map((recentUser) => (
+                    <tr key={recentUser.id}>
+                      <td className="fw-semibold">{recentUser.name}</td>
+                      <td>
+                        <div>{recentUser.email || "No email"}</div>
+                        <small className="text-muted">{recentUser.phone || "No phone"}</small>
+                      </td>
+                      <td><span className="badge text-bg-secondary">{recentUser.role}</span></td>
+                      <td>
+                        <span className={`badge ${recentUser.emailVerified ? "text-bg-success" : "text-bg-light border text-secondary"}`}>
+                          {recentUser.email ? (recentUser.emailVerified ? "Verified" : "Unverified") : "Not provided"}
+                        </span>
+                      </td>
+                      <td>{recentUser.orderCount}</td>
+                      <td>{new Date(recentUser.createdAt).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 

@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 const ICONS = [
   "bi-sun", "bi-stars", "bi-emoji-smile", "bi-heart", "bi-capsule",
@@ -55,7 +55,7 @@ function ProductPicker({ value, onChange }) {
   const [selected, setSelected] = useState(null);
   const ref = useRef(null);
  
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
  
   // Close dropdown on outside click
   useEffect(() => {

@@ -29,27 +29,60 @@ import { deliveryRoutes } from "./routes/delivery.routes.js";
 import { searchRoutes } from "./routes/search.routes.js";
 
 const app = express();
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const IS_PROD = process.env.NODE_ENV === "production";
 
 /* ── Security ── */
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
 /* ── CORS ── */
-const allowedOrigins = IS_PROD
-  ? [FRONTEND_URL]
-  : [FRONTEND_URL, "http://localhost:3000", "http://localhost:5173"];
+function normalizeOrigin(value) {
+  return new URL(value.trim()).origin;
+}
 
-app.use(cors({
+function isAllowedOrigin(origin) {
+  try {
+    return allowedOrigins.has(normalizeOrigin(origin));
+  } catch {
+    return false;
+  }
+}
+
+const configuredOrigins = (
+  process.env.CORS_ORIGINS ||
+  process.env.FRONTEND_URL ||
+  (IS_PROD ? "" : "http://localhost:5173")
+)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+  .map(normalizeOrigin);
+
+const allowedOrigins = new Set([
+  ...configuredOrigins,
+  ...(IS_PROD ? [] : ["http://localhost:3000", "http://localhost:5173"]),
+]);
+
+if (IS_PROD && allowedOrigins.size === 0) {
+  throw new Error("CORS_ORIGINS or FRONTEND_URL must be set in production");
+}
+
+const corsOptions = {
   origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    cb(new Error("Not allowed by CORS"));
+    if (!origin || isAllowedOrigin(origin)) {
+      return cb(null, true);
+    }
+
+    const error = new Error(`Origin ${origin} is not allowed by CORS`);
+    error.status = 403;
+    cb(error);
   },
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
   allowedHeaders: ["Content-Type","Authorization"],
   credentials: false,
-}));
-app.options("/{*splat}", cors());
+};
+
+app.use(cors(corsOptions));
+app.options("/{*splat}", cors(corsOptions));
 
 /* ── Compression & logging ── */
 app.use(compression());

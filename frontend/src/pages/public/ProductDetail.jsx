@@ -1,18 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { notifyCartUpdated } from "../../utils/cartEvents";
+import { getEffectivePrice } from "../../utils/money";
 
 const API_BASE = "/api";
 
 function money(n) {
   return `NPR ${Number(n || 0).toLocaleString()}`;
-}
-
-function calcDiscountedPrice(price, type, value) {
-  if (!type || value === null || value === undefined || value === 0) return price;
-  if (type === "percent") return Math.max(0, Math.round(price - price * (Number(value) / 100)));
-  if (type === "fixed" || type === "flat") return Math.max(0, Number(price) - Number(value));
-  return price;
 }
 
 function safeJsonErrorMessage(data, fallback = "Request failed") {
@@ -138,9 +132,9 @@ export default function ProductDetail() {
   }, [product, hasVariants, selectedVariantId]);
 
   const unitPrice = selectedVariant ? selectedVariant.price : product?.basePrice;
-  const discounted = product
-    ? calcDiscountedPrice(unitPrice, product.discountType, product.discountValue)
-    : 0;
+  const pricing = product ? getEffectivePrice(product, unitPrice) : { price: 0, originalPrice: null };
+  const discounted = pricing.price;
+  const hasActiveDiscount = pricing.originalPrice !== null && pricing.price !== pricing.originalPrice;
 
   const stock = selectedVariant ? selectedVariant.stock : product?.baseStock;
   const inStock = Number(stock || 0) > 0;
@@ -376,10 +370,10 @@ export default function ProductDetail() {
                 <div className="small text-secondary">Price</div>
                 <div className="d-flex align-items-center gap-2 mt-1">
                   <div className="fw-bold fs-4">{money(discounted)}</div>
-                  {discounted !== unitPrice ? (
+                  {hasActiveDiscount ? (
                     <div className="text-secondary text-decoration-line-through">{money(unitPrice)}</div>
                   ) : null}
-                  {product.discountType && product.discountValue ? (
+                  {hasActiveDiscount ? (
                     <span className="badge bg-danger rounded-pill px-3 py-2">
                       {product.discountType === "percent"
                         ? `${product.discountValue}% OFF`
@@ -555,7 +549,7 @@ export default function ProductDetail() {
                         {p.name}
                       </div>
                       <div className="small text-secondary">
-                        {money(calcDiscountedPrice(p.basePrice, p.discountType, p.discountValue))}
+                        {money(getEffectivePrice(p).price)}
                       </div>
                     </div>
                   </div>

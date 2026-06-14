@@ -44,40 +44,39 @@ export const cancelMyOrder = async (req, res) => {
       return { error: { status: 400, message: "cancellation window expired" } };
     }
 
-    // restore stock
-    for (const item of order.items) {
-      if (item.variantId) {
-        const v = await tx.productVariant.findUnique({
-          where: { id: item.variantId },
-          select: { id: true, stock: true },
-        });
-        if (v) {
-          await tx.productVariant.update({
-            where: { id: v.id },
-            data: { stock: v.stock + item.quantity },
-          });
-        }
-      } else {
-        const p = await tx.product.findUnique({
-          where: { id: item.productId },
-          select: { id: true, baseStock: true },
-        });
-        if (p) {
-          await tx.product.update({
-            where: { id: p.id },
-            data: { baseStock: p.baseStock + item.quantity },
-          });
-        }
-      }
-    }
-
-    const updated = await tx.order.update({
-      where: { id: order.id },
+    const claimedOrder = await tx.order.updateMany({
+      where: {
+        id: order.id,
+        userId,
+        status: { in: [...cancellableStatuses] },
+      },
       data: {
         status: "Cancelled",
         cancelledAt: new Date(),
         cancelReason: reason || null,
       },
+    });
+    if (claimedOrder.count !== 1) {
+      return { error: { status: 409, message: "order cancellation is already being processed" } };
+    }
+
+    // restore stock
+    for (const item of order.items) {
+      if (item.variantId) {
+        await tx.productVariant.updateMany({
+          where: { id: item.variantId },
+          data: { stock: { increment: item.quantity } },
+        });
+      } else {
+        await tx.product.updateMany({
+          where: { id: item.productId },
+          data: { baseStock: { increment: item.quantity } },
+        });
+      }
+    }
+
+    const updated = await tx.order.findUnique({
+      where: { id: order.id },
       include: { items: true },
     });
 
@@ -107,105 +106,128 @@ export const createReturnRequest = async (req, res) => {
     return res.status(400).json({ message: "items must be a non-empty array" });
   }
 
-  const result = await prisma.$transaction(async (tx) => {
-    const settings = await getSettings(tx);
+  const requestedByOrderItem = new Map();
+  for (const row of items) {
+    const orderItemId = row.orderItemId;
+    const qty = Number(row.quantity);
 
-    const order = await tx.order.findUnique({
-      where: { id },
-      include: { items: true },
-    });
-
-    if (!order) return { error: { status: 404, message: "order not found" } };
-    if (order.userId !== userId) return { error: { status: 403, message: "forbidden" } };
-
-    // Return only after delivery
-    if (order.status !== "Delivered") {
-      return { error: { status: 400, message: "returns allowed only after delivery" } };
+    if (!orderItemId || !Number.isInteger(qty) || qty < 1) {
+      return res.status(400).json({ message: "each item needs orderItemId and an integer quantity>=1" });
     }
-    if (!order.deliveredAt) {
-      return { error: { status: 400, message: "deliveredAt missing; admin must mark delivered" } };
-    }
+    requestedByOrderItem.set(orderItemId, (requestedByOrderItem.get(orderItemId) || 0) + qty);
+  }
 
-    // Validate return window (defaultReturnWindowDays or product-specific override later)
-    const baseDeadline = new Date(order.deliveredAt).getTime() + msDays(settings.defaultReturnWindowDays);
-    if (Date.now() > baseDeadline) {
-      return { error: { status: 400, message: "return window expired" } };
-    }
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const settings = await getSettings(tx);
 
-    // Map order items for lookup
-    const orderItemById = new Map(order.items.map((oi) => [oi.id, oi]));
-
-    // Ensure requested items exist and are returnable
-    const requestLines = [];
-    for (const row of items) {
-      const orderItemId = row.orderItemId;
-      const qty = Number(row.quantity);
-
-      if (!orderItemId || !qty || qty < 1) {
-        return { error: { status: 400, message: "each item needs orderItemId and quantity>=1" } };
-      }
-
-      const oi = orderItemById.get(orderItemId);
-      if (!oi) return { error: { status: 400, message: "invalid orderItemId" } };
-      if (qty > oi.quantity) return { error: { status: 400, message: "return quantity exceeds purchased quantity" } };
-
-      const product = await tx.product.findUnique({
-        where: { id: oi.productId },
-        select: { id: true, name: true, isReturnable: true, returnWindowDays: true },
+      const order = await tx.order.findUnique({
+        where: { id },
+        include: { items: true },
       });
-      if (!product) return { error: { status: 400, message: "product not found" } };
 
-      if (!product.isReturnable) {
-        return { error: { status: 400, message: `product not returnable: ${product.name}` } };
+      if (!order) return { error: { status: 404, message: "order not found" } };
+      if (order.userId !== userId) return { error: { status: 403, message: "forbidden" } };
+
+      // Return only after delivery
+      if (order.status !== "Delivered") {
+        return { error: { status: 400, message: "returns allowed only after delivery" } };
+      }
+      if (!order.deliveredAt) {
+        return { error: { status: 400, message: "deliveredAt missing; admin must mark delivered" } };
       }
 
-      // If product has its own window, enforce stricter rule
-      const windowDays = product.returnWindowDays ?? settings.defaultReturnWindowDays;
-      const deadline = new Date(order.deliveredAt).getTime() + msDays(windowDays);
-      if (Date.now() > deadline) {
-        return { error: { status: 400, message: `return window expired for: ${product.name}` } };
+      const baseDeadline = new Date(order.deliveredAt).getTime() + msDays(settings.defaultReturnWindowDays);
+      if (Date.now() > baseDeadline) {
+        return { error: { status: 400, message: "return window expired" } };
       }
 
-      requestLines.push({ oi, qty });
-    }
+      const orderItemById = new Map(order.items.map((oi) => [oi.id, oi]));
+      const orderItemIds = [...requestedByOrderItem.keys()];
+      const previousRequests = await tx.returnRequestItem.groupBy({
+        by: ["orderItemId"],
+        where: {
+          orderItemId: { in: orderItemIds },
+          returnRequest: { status: { not: "Rejected" } },
+        },
+        _sum: { quantity: true },
+      });
+      const previouslyRequestedByItem = new Map(
+        previousRequests.map((row) => [row.orderItemId, row._sum.quantity || 0]),
+      );
 
-    // Create return request
-    const rr = await tx.returnRequest.create({
-      data: {
-        orderId: order.id,
-        userId,
-        status: "Requested",
-        reason,
-        note: note || null,
-      },
-    });
+      const requestLines = [];
+      for (const [orderItemId, qty] of requestedByOrderItem) {
+        const oi = orderItemById.get(orderItemId);
+        if (!oi) return { error: { status: 400, message: "invalid orderItemId" } };
 
-    for (const line of requestLines) {
-      const oi = line.oi;
+        const alreadyRequested = previouslyRequestedByItem.get(orderItemId) || 0;
+        if (alreadyRequested + qty > oi.quantity) {
+          return { error: { status: 400, message: `return quantity exceeds remaining quantity for ${oi.productName}` } };
+        }
 
-      await tx.returnRequestItem.create({
+        const product = await tx.product.findUnique({
+          where: { id: oi.productId },
+          select: { id: true, name: true, isReturnable: true, returnWindowDays: true },
+        });
+        if (!product) return { error: { status: 400, message: "product not found" } };
+
+        if (!product.isReturnable) {
+          return { error: { status: 400, message: `product not returnable: ${product.name}` } };
+        }
+
+        const windowDays = product.returnWindowDays ?? settings.defaultReturnWindowDays;
+        const deadline = new Date(order.deliveredAt).getTime() + msDays(windowDays);
+        if (Date.now() > deadline) {
+          return { error: { status: 400, message: `return window expired for: ${product.name}` } };
+        }
+
+        requestLines.push({ oi, qty });
+      }
+
+      const rr = await tx.returnRequest.create({
         data: {
-          returnRequestId: rr.id,
-          orderItemId: oi.id,
-          productId: oi.productId,
-          variantId: oi.variantId,
-          quantity: line.qty,
-          productName: oi.productName,
-          variantName: oi.variantName,
-          unitPrice: oi.unitPrice,
+          orderId: order.id,
+          userId,
+          status: "Requested",
+          reason,
+          note: note || null,
         },
       });
+
+      for (const line of requestLines) {
+        const oi = line.oi;
+
+        await tx.returnRequestItem.create({
+          data: {
+            returnRequestId: rr.id,
+            orderItemId: oi.id,
+            productId: oi.productId,
+            variantId: oi.variantId,
+            quantity: line.qty,
+            productName: oi.productName,
+            variantName: oi.variantName,
+            unitPrice: oi.unitPrice,
+          },
+        });
+      }
+
+      const full = await tx.returnRequest.findUnique({
+        where: { id: rr.id },
+        include: { items: true },
+      });
+
+      return { returnRequest: full };
+    }, { isolationLevel: "Serializable" });
+
+    if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+    return res.status(201).json({ returnRequest: result.returnRequest });
+  } catch (error) {
+    if (error.code === "P2034") {
+      return res.status(409).json({ message: "return request changed concurrently; please try again" });
     }
-
-    const full = await tx.returnRequest.findUnique({
-      where: { id: rr.id },
-      include: { items: true },
-    });
-
-    return { returnRequest: full };
-  });
-
-  if (result.error) return res.status(result.error.status).json({ message: result.error.message });
-  return res.status(201).json({ returnRequest: result.returnRequest });
+    console.error("createReturnRequest error:", error);
+    return res.status(500).json({ message: "internal server error" });
+  }
 };
 

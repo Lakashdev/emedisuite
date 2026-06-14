@@ -39,6 +39,8 @@ const AdminCategories = lazy(() => import("../pages/admin/Categories"));
 const AdminProducts = lazy(() => import("../pages/admin/Products"));
 const AdminOrders = lazy(() => import("../pages/admin/Orders"));
 const AdminOrderDetail = lazy(() => import("../pages/admin/OrderDetail"));
+const AdminUsers = lazy(() => import("../pages/admin/Users"));
+const AdminUserDetail = lazy(() => import("../pages/admin/UserDetail"));
 const Settings = lazy(() => import("../pages/admin/Settings"));
 const HeroSlides = lazy(() => import("../pages/admin/HeroSlides"));
 const StoreInfoSettings = lazy(() => import("../pages/admin/StoreInfoSettings"));
@@ -89,6 +91,8 @@ export default function AppRoutes() {
           <Route path="/admin/products" element={<Suspense fallback={<Spinner />}><AdminProducts /></Suspense>} />
           <Route path="/admin/orders" element={<Suspense fallback={<Spinner />}><AdminOrders /></Suspense>} />
           <Route path="/admin/orders/:id" element={<Suspense fallback={<Spinner />}><AdminOrderDetail /></Suspense>} />
+          <Route path="/admin/users" element={<Suspense fallback={<Spinner />}><AdminUsers /></Suspense>} />
+          <Route path="/admin/users/:id" element={<Suspense fallback={<Spinner />}><AdminUserDetail /></Suspense>} />
           <Route path="/admin/settings" element={<Suspense fallback={<Spinner />}><Settings /></Suspense>} />
           <Route path="/admin/settings/hero-slides" element={<Suspense fallback={<Spinner />}><HeroSlides /></Suspense>} />
           <Route path="/admin/settings/store-info" element={<Suspense fallback={<Spinner />}><StoreInfoSettings /></Suspense>} />

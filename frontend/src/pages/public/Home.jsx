@@ -2,13 +2,13 @@ import { Link } from "react-router-dom";
 import { useRef, useState, useEffect, useMemo } from "react";
 import { getPublicTrendingProducts } from "../../api/trendingProducts";
 import { resolveAssetUrl } from "../../utils/assetUrl";
+import { getEffectivePrice } from "../../utils/money";
 
 
 
 
 /* ─── API BASE ─── */
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 /* ─── BRAND TOKENS ─── */
 // Navy: #1B3D6E   Green: #6BBF4E   Light green: #E8F5E2   Light navy: #EEF2F8
@@ -22,6 +22,7 @@ async function fetchHeroSlides() {
 }
 
 
+/* Retained for the Curated bundles section.
 const bundles = [
   {
     id: 1,
@@ -72,7 +73,9 @@ const bundles = [
     icon: "bi-moon-stars",
   },
 ];
+*/
 
+/* Retained for the Shop by health concern section.
 const healthConcerns = [
   { title: "Full Body Check", icon: "bi-activity", href: "/labs?concern=full-body", sub: "Comprehensive" },
   { title: "Diabetes Care", icon: "bi-droplet-half", href: "/labs?concern=diabetes", sub: "Monitor & manage" },
@@ -81,6 +84,7 @@ const healthConcerns = [
   { title: "Bone & Joint", icon: "bi-universal-access", href: "/products?category=supplements", sub: "Vitamin D, Calcium" },
   { title: "Gut Health", icon: "bi-heart-pulse", href: "/products?category=wellness", sub: "Probiotics & more" },
 ];
+*/
 
 /* ─── API HELPERS ─── */
 async function fetchCategories() {
@@ -104,12 +108,15 @@ async function fetchNewArrivals() {
 }
 
 function shapeProduct(product) {
+  const pricing = getEffectivePrice(product);
+  const hasDiscount = pricing.originalPrice !== null && pricing.price !== pricing.originalPrice;
+
   return {
     ...product,
     brand: product.brand?.name || "",
-    price: product.basePrice || 0,
-    oldPrice: null,
-    off: null,
+    price: pricing.price,
+    oldPrice: hasDiscount ? pricing.originalPrice : null,
+    off: hasDiscount ? pricing.discountPct : null,
     rating: 4.8,
     reviews: 0,
     image: resolveAssetUrl(product.images?.[0]?.url),
@@ -183,14 +190,6 @@ function ProductCard({ p, onAddCart }) {
       <div className="product-card">
         <div className="product-img-wrap">
           {p.off ? <span className="discount-badge">{p.off}% OFF</span> : null}
-          <button
-            className="wish-btn"
-            type="button"
-            aria-label="wishlist"
-            onClick={(e) => e.preventDefault()}
-          >
-            <i className="bi bi-heart" />
-          </button>
 
           {p.image ? (
             <img
@@ -726,7 +725,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* BUNDLES */}
+      {/* Retained for future reuse.
       <section className="section bundles-section">
         <div className="container">
           <SecHead
@@ -780,6 +779,7 @@ export default function Home() {
           </div>
         </div>
       </section>
+      */}
 
       {/* BEST SELLERS */}
       <section className="section container">
@@ -802,7 +802,7 @@ export default function Home() {
         )}
       </section>
 
-      {/* HEALTH CONCERNS */}
+      {/* Retained for future reuse.
       <section className="section concern-section">
         <div className="container">
           <SecHead
@@ -828,6 +828,7 @@ export default function Home() {
           </div>
         </div>
       </section>
+      */}
 
       {/* NEW ARRIVALS */}
       <section className="section section-alt">
@@ -1467,11 +1468,15 @@ const CSS = `
   scroll-snap-align: start;
   flex-shrink: 0;
   width: 236px;
+  height: 460px;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 12px 32px rgba(27,61,110,.07);
 }
 .product-card-link {
-  display: block;
+  display: flex;
   width: 236px;
+  height: 460px;
   flex-shrink: 0;
 }
 .product-card:hover {
@@ -1504,26 +1509,37 @@ const CSS = `
   z-index: 2;
   letter-spacing: 0.02em;
 }
-.wish-btn {
-  position: absolute;
-  top: 10px; right: 10px;
-  width: 30px; height: 30px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border);
-  background: var(--white);
-  font-size: 13px;
-  color: var(--text-muted);
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; z-index: 2;
-  transition: color .2s, border-color .2s, background .2s;
+.product-body {
+  padding: 18px 18px 20px;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
 }
-.wish-btn:hover { color: #E63946; border-color: #E63946; background: #FFF0F1; }
-.product-body { padding: 18px 18px 20px; }
 .product-brand { font-size: 10.5px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
-.product-name { font-size: 14.5px; font-weight: 700; color: var(--text-main); line-height: 1.45; min-height: 42px; margin-bottom: 8px; }
+.product-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.45;
+  height: 63px;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
 .product-meta { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
 .review-count { font-size: 11px; color: var(--text-muted); }
-.product-price-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.product-price-row {
+  display: flex;
+  align-items: center;
+  align-content: flex-start;
+  gap: 4px 8px;
+  min-height: 43px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
 .product-price { font-size: 18px; font-weight: 800; color: var(--navy); }
 .product-old { font-size: 12px; color: var(--text-muted); text-decoration: line-through; }
 .add-btn {
@@ -1539,6 +1555,7 @@ const CSS = `
   transition: background .2s, transform .1s;
   letter-spacing: -0.01em;
   display: flex; align-items: center; justify-content: center; gap: 5px;
+  margin-top: auto;
 }
 .add-btn:hover { background: var(--navy-dark); }
 .add-btn.added { background: var(--green-dark); }
@@ -1794,8 +1811,8 @@ const CSS = `
   .section { padding: 58px 0; }
   .cat-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .cat-card { min-height: 138px; }
-  .product-card { width: 210px; }
-  .product-card-link { width: 210px; }
+  .product-card { width: 210px; height: 435px; }
+  .product-card-link { width: 210px; height: 435px; }
   .product-img-wrap { height: 180px; }
   .bundle-grid { grid-template-columns: 1fr; }
   .concern-grid { grid-template-columns: 1fr; }
